@@ -1,5 +1,7 @@
 # ⚽ ligamx-match-predictor
 
+![Dashboard](docs/app.png)
+
 Predictor de resultados de partidos de la **Liga MX** (gana local, empate o gana visitante) usando Elo y forma reciente, comparado contra las probabilidades implícitas de los momios del mercado. Incluye un dashboard en Streamlit.
 
 > **Resultado principal:** los modelos simples le ganan a no saber nada, pero **ninguno supera al mercado**. Agregar mis features encima de los momios tampoco mejora. Abajo explico por qué.
@@ -58,7 +60,15 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Para reproducir el análisis completo, descarga [MEX.csv](https://football-data.co.uk/new/MEX.csv) a `datos/crudos/` (si `curl` da error de certificado, bájalo desde el navegador) y corre `cuadernos/01_exploracion.ipynb`.
+Para la app basta `requirements.txt`. Para el notebook, reentrenar el modelo y las pruebas, instala `requirements-dev.txt` (incluye al anterior):
+
+```bash
+pip install -r requirements-dev.txt
+python -m src.entrenar   # imprime la tabla de métricas y regenera modelos/modelo.joblib
+python -m pytest -q      # pruebas de Elo, forma y no-fuga de datos
+```
+
+El CSV ya viene en `datos/crudos/`. Si quieres actualizarlo con los partidos más recientes, descarga [MEX.csv](https://football-data.co.uk/new/MEX.csv) y reemplázalo (si `curl` da error de certificado, bájalo desde el navegador). El análisis completo está en `cuadernos/01_exploracion.ipynb`.
 
 ## Estructura
 
@@ -70,13 +80,15 @@ Para reproducir el análisis completo, descarga [MEX.csv](https://football-data.
 │   ├── crudos/             # MEX.csv original
 │   └── procesados/         # partidos con features (no se sube)
 ├── modelos/modelo.joblib   # modelo entrenado
-├── src/
-└── requirements.txt
+├── src/                    # features.py (Elo y forma) y entrenar.py
+├── tests/                  # pruebas de features y no-fuga
+├── requirements.txt        # solo lo que necesita la app
+└── requirements-dev.txt    # notebook, entrenamiento y pruebas
 ```
 
 ## Stack
 
-Python, pandas, scikit-learn, XGBoost, matplotlib, Streamlit.
+Python, pandas, scikit-learn, XGBoost (solo para entrenamiento y comparación), Streamlit.
 
 ## Autor
 
