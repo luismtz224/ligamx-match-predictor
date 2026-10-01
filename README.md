@@ -3,6 +3,7 @@
 ![Dashboard](docs/app.png)
 
 Predictor de resultados de partidos de la **Liga MX** (gana local, empate o gana visitante) usando Elo y forma reciente, comparado contra las probabilidades implícitas de los momios del mercado. Incluye un dashboard en Streamlit.
+**Demo:** [ligamx.streamlit.app](https://ligamx.streamlit.app)
 
 > **Resultado principal:** los modelos simples le ganan a no saber nada, pero **ninguno supera al mercado**. Agregar mis features encima de los momios tampoco mejora. Abajo explico por qué.
 
