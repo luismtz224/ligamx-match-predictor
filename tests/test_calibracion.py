@@ -1,7 +1,9 @@
 import numpy as np
 import pytest
 
-from src.calibracion import asignar_bins, bootstrap_ece, ece, ece_esperado
+from src.calibracion import (asignar_bins, bootstrap_ece, brier_total_por_partido, ece,
+                             ece_esperado)
+from src.evaluacion import bootstrap_pareado
 
 
 def _probs_y_resultados(n, semilla=0, deformar=False):
@@ -74,3 +76,28 @@ def test_bootstrap_ece_con_modelo_perfecto_constante_es_degenerado():
     bloques = np.repeat(np.arange(10), 6)
     lo, hi = bootstrap_ece(p, o, bloques, n_bins=3, n=200)
     assert lo == pytest.approx(0.0) and hi == pytest.approx(0.0)
+
+
+def test_brier_total_por_partido_con_ejemplo_a_mano():
+    p = np.array([[0.2, 0.3, 0.5], [0.6, 0.2, 0.2]])
+    y = np.array([2, 0])   # gana local en el primero, visitante en el segundo
+    esperado = [0.2**2 + 0.3**2 + 0.5**2, 0.4**2 + 0.2**2 + 0.2**2]
+    assert brier_total_por_partido(p, y) == pytest.approx(esperado)
+
+
+def test_comparacion_pareada_de_brier_detecta_al_modelo_mejor_y_no_inventa_diferencias():
+    rng = np.random.default_rng(0)
+    p, y = _probs_y_resultados(3000)
+    semana = rng.integers(0, 150, size=3000)
+    ruido = rng.dirichlet([2, 2, 2], size=3000)
+    peor = 0.5 * p + 0.5 * ruido                       # mezcla con ruido: peor que el calibrado
+
+    # el modelo con ruido es peor: la diferencia peor - bueno es positiva y su IC no cruza 0
+    dif = brier_total_por_partido(peor, y) - brier_total_por_partido(p, y)
+    media, lo, hi = bootstrap_pareado(dif, bloques=semana, n=2000)
+    assert media > 0 and lo > 0
+
+    # un modelo contra sí mismo: diferencia exactamente 0 e IC degenerado en 0
+    cero = brier_total_por_partido(p, y) - brier_total_por_partido(p, y)
+    media, lo, hi = bootstrap_pareado(cero, bloques=semana, n=2000)
+    assert media == 0 and lo == 0 and hi == 0

@@ -3,6 +3,7 @@
 ![Dashboard](docs/app.png)
 
 Predictor de resultados de partidos de la **Liga MX** (gana local, empate o gana visitante) usando Elo y forma reciente, comparado contra las probabilidades implícitas de los momios del mercado. Incluye un dashboard en Streamlit.
+
 **Demo:** [ligamx.streamlit.app](https://ligamx.streamlit.app)
 
 > **Resultado principal:** la regresión logística le gana a no saber nada, pero **ningún modelo supera al mercado**. Agregar mis features encima de los momios empeora levemente el resultado, de forma medible (+0.0077 de log loss, IC que no cruza 0). Abajo explico por qué.
@@ -64,6 +65,43 @@ Este es **otro experimento** (entrenamiento fijo 2013/14 a 2022/23, 1,016 partid
 
 En este split las frecuencias predicen 44.6% local, 27.1% empate y 28.3% visitante.
 
+## Calibración
+
+<img src="docs/calibracion.png" width="480" alt="Curvas de calibración de la logística y del mercado">
+
+Un modelo está **calibrado** si, cuando dice "40%", ese resultado pasa más o menos el 40% de las veces. En la gráfica, cada punto agrupa ~440 partidos con probabilidades parecidas y la línea punteada es la calibración perfecta: un punto sobre la línea es honesto, uno arriba dice menos de lo que pasa y uno abajo dice más. Se midió con las mismas predicciones fuera de muestra del walk-forward (2,651 partidos), con 6 grupos de igual tamaño por resultado.
+
+**Calibración no es lo mismo que acierto.** En la logística no se detecta descalibración (sus ECE de local y visitante caen dentro del ruido), pero el mercado la supera en Brier (el error cuadrático de las probabilidades; menor es mejor) y en log loss. En Brier la diferencia por partido, logística − mercado, es +0.0166 con IC 95% por bloques de semana [0.0115, 0.0218] (IC simple [0.0115, 0.0219]): no cruza 0, así que el mercado supera a la logística en Brier.
+
+| Fuente | Brier total (suma de los 3 resultados) |
+|---|---|
+| Mercado | 0.6002 |
+| Regresión logística | 0.6168 |
+
+**ECE** (error de calibración esperado: qué tanto se aleja, en promedio, la probabilidad dicha de la frecuencia real). Un modelo perfecto tampoco da 0 con ~440 partidos por grupo, por el ruido de la muestra, así que se compara contra el ECE que daría un modelo perfecto (simulando los resultados con las propias probabilidades, 1,000 simulaciones; límite = percentil 97.5):
+
+| Fuente | Resultado | ECE | Esperado si fuera perfecto | Límite del ruido |
+|---|---|---|---|---|
+| Logística | Gana local | 0.0108 | 0.0180 | 0.0293 |
+| Logística | Empate | 0.0236 | 0.0166 | 0.0274 |
+| Logística | Gana visitante | 0.0098 | 0.0165 | 0.0274 |
+| Mercado | Gana local | 0.0324 | 0.0181 | 0.0302 |
+| Mercado | Empate | 0.0262 | 0.0166 | 0.0279 |
+| Mercado | Gana visitante | 0.0221 | 0.0167 | 0.0272 |
+
+No publico intervalos de confianza del ECE: el bootstrap les mete ruido adicional y salen inflados hacia arriba, así que no son confiables.
+
+**Sensibilidad al número de grupos (4, 6 y 10):**
+
+- La única conclusión estable es que el **mercado queda descalibrado en "gana local"**: Ningún grupo por sí solo se distingue de la línea (la barra de error de cada uno la toca), pero el patrón sí: los grupos de favoritos quedan sistemáticamente por encima (en el más alto el mercado dice 65.3% y el local ganó 69.2%), y eso deja el ECE sobre el límite del ruido con 4, 6 y 10 grupos.
+- El **empate de la logística** solo pasa el límite del ruido con 4 grupos (con 6 y 10 no), así que no lo afirmo como descalibración.
+- El visitante del mercado solo pasa el límite con 10 grupos, tampoco es estable.
+- Local y visitante de la logística nunca pasan el límite.
+
+**No se aplicó ninguna recalibración.** En local y visitante la logística ya está dentro del ruido, y la señal del empate no es robusta al número de grupos, así que no había algo sólido que corregir.
+
+**Limitación (hipótesis, no resultado):** las probabilidades del mercado salen de dividir los momios entre su suma, que supone que el margen de la casa se reparte de forma proporcional. Si no es así, esa conversión podría sesgar sus probabilidades y contribuir a la descalibración que se ve en "gana local". No lo probé.
+
 ## Datos
 
 - Resultados y momios de [football-data.co.uk](https://football-data.co.uk/mexico.php) (`MEX.csv`): 4,743 partidos de 2012/13 a 2026/27 (torneo en curso).
@@ -107,7 +145,8 @@ Para la app basta `requirements.txt`. Para el notebook, reentrenar el modelo y l
 pip install -r requirements-dev.txt
 python -m src.entrenar    # tabla del split único y regenera modelos/modelo.joblib
 python -m src.evaluacion  # walk-forward con intervalos de confianza por bootstrap
-python -m pytest -q       # pruebas de Elo, forma, no-fuga de datos y folds
+python -m src.calibracion # curvas de calibración, Brier y ECE; genera docs/calibracion.png
+python -m pytest -q       # pruebas de Elo, forma, no-fuga de datos, folds y calibración
 ```
 
 El CSV ya viene en `datos/crudos/`. Si quieres actualizarlo con los partidos más recientes, descarga [MEX.csv](https://football-data.co.uk/new/MEX.csv) y reemplázalo (si `curl` da error de certificado, bájalo desde el navegador). El análisis completo está en `cuadernos/01_exploracion.ipynb`.
@@ -122,8 +161,8 @@ El CSV ya viene en `datos/crudos/`. Si quieres actualizarlo con los partidos má
 │   ├── crudos/             # MEX.csv original
 │   └── procesados/         # partidos con features (no se sube)
 ├── modelos/modelo.joblib   # modelo entrenado
-├── src/                    # features.py (Elo y forma), entrenar.py y evaluacion.py (walk-forward)
-├── tests/                  # test_features.py (Elo, no-fuga) y test_evaluacion.py (folds, bootstrap)
+├── src/                    # features.py (Elo y forma), entrenar.py, evaluacion.py (walk-forward) y calibracion.py
+├── tests/                  # test_features.py (Elo, no-fuga), test_evaluacion.py (folds, bootstrap) y test_calibracion.py
 ├── requirements.txt        # solo lo que necesita la app
 └── requirements-dev.txt    # notebook, entrenamiento y pruebas
 ```

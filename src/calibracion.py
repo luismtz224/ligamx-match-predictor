@@ -62,6 +62,13 @@ def brier(p, o):
     return float(np.mean((np.asarray(p, dtype=float) - np.asarray(o, dtype=float)) ** 2))
 
 
+def brier_total_por_partido(p3, y):
+    """Brier de cada partido: suma de los 3 resultados de (p - 1[y=k])^2."""
+    p3 = np.asarray(p3, dtype=float)
+    one_hot = (np.asarray(y)[:, None] == np.arange(3)).astype(float)
+    return ((p3 - one_hot) ** 2).sum(axis=1)
+
+
 def tabla_bins(p, o, n_bins=N_BINS):
     """DataFrame por bin: n, probabilidad predicha media, frecuencia real e IC Wilson 95%."""
     p, o = np.asarray(p, dtype=float), np.asarray(o, dtype=float)
@@ -229,6 +236,17 @@ def main():
 
     graficar(probs, y)
     print(f"\nGráfica guardada en {RUTA_PNG}")
+
+    print("\n(4) Brier total por partido: logística - mercado (positivo = la logística es peor). "
+          f"IC 95%, {N_BOOT:,} remuestreos pareados, semilla {SEMILLA}")
+    dif = (brier_total_por_partido(probs["logistica"], y)
+           - brier_total_por_partido(probs["mercado"], y))
+    media, lo_i, hi_i = bootstrap_pareado(dif)
+    _, lo_b, hi_b = bootstrap_pareado(dif, bloques=semana)
+    print(pd.DataFrame([{"dif_media": media, "iid_lo": lo_i, "iid_hi": hi_i,
+                         "bloques_lo": lo_b, "bloques_hi": hi_b,
+                         "bloques_cruza_0": lo_b <= 0 <= hi_b}],
+                       index=["logistica - mercado"]).round(4).to_string())
 
 
 if __name__ == "__main__":
