@@ -73,14 +73,17 @@ with tab2:
 
 with tab3:
     st.subheader("Qué tan bueno es")
-    st.write("Evaluación en 1,016 partidos que el modelo no vio (2023/24 a 2025/26). "
+    st.write("Validación walk-forward: 8 temporadas de prueba (2018/19 a 2025/26, 2,651 partidos), "
+             "cada una con un modelo entrenado solo con las temporadas anteriores. "
              "Menor log loss es mejor.")
     st.table(pd.DataFrame({
         "Modelo": ["Mercado", "Logística + momios", "Logística", "XGBoost", "Frecuencias"],
-        "Log loss": [0.9809, 0.9879, 1.0090, 1.0213, 1.0599],
-        "Accuracy": [0.529, 0.520, 0.505, 0.502, 0.471],
+        "Log loss": ["1.0037", "1.0115", "1.0281", "1.0474", "1.0670"],
+        "Accuracy": ["50.85%", "50.74%", "49.30%", "47.98%", "45.61%"],
     }).set_index("Modelo"))
-    st.write("El modelo supera a las frecuencias históricas pero **no al mercado**: los momios ya "
-             "incluyen lesiones y alineaciones, que este modelo no ve. Proyecto educativo, no es "
-             "recomendación de apuestas.")
+    st.write("La regresión logística (el modelo de este dashboard) supera a \"no saber nada\" "
+             "(las frecuencias históricas): gana en los 8 folds. **Ningún modelo supera al mercado**: "
+             "los momios ya incluyen lesiones y alineaciones, que este modelo no ve. Esto se midió "
+             "con intervalos de confianza al 95% por bootstrap, y ninguna diferencia contra el "
+             "mercado cruza 0. Proyecto educativo, no es recomendación de apuestas.")
     st.markdown("[Código y metodología en GitHub](https://github.com/luismtz224/ligamx-match-predictor)")
