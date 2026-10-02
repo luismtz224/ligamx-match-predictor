@@ -31,13 +31,15 @@ def test_colores_hex_validos():
         assert f["color3"] == "" or HEX.fullmatch(f["color3"]), equipo
 
 
-def test_escudos_existen_en_ambos_tamanos():
+def test_escudos_existen_en_todos_los_tamanos():
+    assert LADOS == (96, 256, 512)
     for archivo in cargar_equipos()["escudo"]:
         for lado in LADOS:
             ruta = DIR_ESCUDOS / str(lado) / archivo
             assert ruta.exists(), ruta
             with Image.open(ruta) as img:
-                assert img.size == (lado, lado) and img.mode == "RGBA"
+                assert img.size == (lado, lado) and img.mode == "RGBA", ruta
+                assert img.getchannel("A").getextrema()[0] == 0, f"sin transparencia: {ruta}"
 
 
 def test_csv_fiel_a_la_fuente():

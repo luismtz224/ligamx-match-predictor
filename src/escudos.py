@@ -1,5 +1,5 @@
 """Versiones ligeras de los escudos. `python -m src.escudos` las regenera desde
-assets/escudos_originales/ (no se sube al repo) en assets/escudos/256 y assets/escudos/512."""
+assets/escudos_originales/ (no se sube al repo) en assets/escudos/96, 256 y 512."""
 from pathlib import Path
 
 from PIL import Image
@@ -7,7 +7,7 @@ from PIL import Image
 RAIZ = Path(__file__).resolve().parent.parent
 DIR_ORIGINALES = RAIZ / "assets" / "escudos_originales"
 DIR_ESCUDOS = RAIZ / "assets" / "escudos"
-LADOS = (256, 512)
+LADOS = (96, 256, 512)
 
 
 def cuadrado(img, lado):
