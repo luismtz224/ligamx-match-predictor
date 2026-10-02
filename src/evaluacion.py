@@ -80,7 +80,11 @@ def bootstrap_pareado(dif, bloques=None, n=N_BOOT, semilla=SEMILLA):
     return dif.mean(), lo, hi
 
 
-def main():
+def oof_walk_forward():
+    """Predicciones fuera de muestra del walk-forward.
+
+    Devuelve (folds, y, temp, semana, probs) con los folds concatenados en orden.
+    """
     d = cargar_partidos(RUTA_CSV)
     feat, _, _ = procesar(d, K=20, ventaja=60, regresion=0.0)
     folds = generar_folds(feat)
@@ -90,6 +94,11 @@ def main():
     y = feat.loc[i_test, "y"].to_numpy()
     temp = feat.loc[i_test, "Season"].to_numpy()
     semana = feat.loc[i_test, "Date"].dt.to_period("W-SUN").astype(str).to_numpy()  # lunes a domingo
+    return folds, y, temp, semana, probs
+
+
+def main():
+    folds, y, temp, semana, probs = oof_walk_forward()
     perd = {k: perdida_por_partido(y, p) for k, p in probs.items()}
 
     pd.set_option("display.width", 200)
