@@ -24,6 +24,12 @@ def logistica():
                          LogisticRegression(max_iter=1000))
 
 
+def xgboost():
+    return XGBClassifier(n_estimators=200, max_depth=3, learning_rate=0.05,
+                         subsample=0.8, colsample_bytree=0.8,
+                         eval_metric="mlogloss", random_state=42)
+
+
 def metricas(y, p):
     return log_loss(y, p, labels=[0, 1, 2]), accuracy_score(y, p.argmax(axis=1))
 
@@ -53,10 +59,7 @@ def main():
     m = logistica().fit(train[X_MERCADO], train["y"])
     res["logistica + mercado"] = metricas(y_test, m.predict_proba(test[X_MERCADO]))
 
-    m = XGBClassifier(n_estimators=200, max_depth=3, learning_rate=0.05,
-                      subsample=0.8, colsample_bytree=0.8,
-                      eval_metric="mlogloss", random_state=42)
-    m.fit(train[X_COLS], train["y"])
+    m = xgboost().fit(train[X_COLS], train["y"])
     res["xgboost"] = metricas(y_test, m.predict_proba(test[X_COLS]))
 
     print(pd.DataFrame(res, index=["log_loss", "accuracy"]).T.round(4)
