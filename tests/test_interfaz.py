@@ -55,6 +55,17 @@ def test_todos_los_componentes_son_una_linea():
         _sin_sangria(h)
 
 
+def test_nombre_mostrado_en_tarjeta_fila_y_alt():
+    t = c.tarjeta_equipo("Club America", 1643.4, "", nombre="Club América")
+    assert ">Club América<" in t and ">Club America<" not in t and "--team-america" in t
+    f = c.fila_ranking(3, "Guadalajara Chivas", 1613.2, 50, "", nombre="CD Guadalajara")
+    assert ">CD Guadalajara<" in f and "Chivas" not in f and "--team-chivas" in f
+    assert '>Juarez<' in c.fila_ranking(1, "Juarez", 1500, 0, "")  # sin nombre: usa la llave
+    assert 'alt="Pumas UNAM"' in c.escudo("QUJD", 32, alt="Pumas UNAM")
+    assert 'alt=""' in c.escudo("QUJD", 32)
+    assert 'alt="&lt;x&gt;&quot;"' in c.escudo("QUJD", 32, alt='<x>"')
+
+
 def test_escudo_fallback_y_halo():
     vacio = c.escudo(None, 40)
     assert "lm-crest" in vacio and "<img" not in vacio and "has-img" not in vacio

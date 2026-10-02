@@ -6,7 +6,7 @@ import joblib
 import streamlit as st
 
 from interfaz import componentes
-from src.equipos import cargar_equipos
+from src.equipos import cargar_equipos, nombre_mostrado, ordenar_por_nombre
 
 RAIZ = Path(__file__).resolve().parent.parent
 RUTA_MODELO = RAIZ / "modelos" / "modelo.joblib"
@@ -45,9 +45,20 @@ def escudo_b64(archivo, lado):
     return base64.b64encode(ruta.read_bytes()).decode("ascii")
 
 
+def nombre(equipo):
+    """Nombre para mostrar de un equipo (la llave es el nombre de MEX.csv)."""
+    return nombre_mostrado(equipo, equipos())
+
+
+def ordenados(lista):
+    """Llaves ordenadas por nombre mostrado."""
+    return ordenar_por_nombre(lista, equipos())
+
+
 def escudo_html(equipo, px):
     """Escudo listo para incrustar: 96 px si se ve chico, 256 px si se ve grande."""
     fichas = equipos()
     archivo = fichas.loc[equipo, "escudo"] if equipo in fichas.index else None
     lado = 96 if px <= PX_MAX_CHICO else 256
-    return componentes.escudo(escudo_b64(archivo, lado), px, halo=equipo in componentes.HALO)
+    return componentes.escudo(escudo_b64(archivo, lado), px, halo=equipo in componentes.HALO,
+                              alt=nombre(equipo))

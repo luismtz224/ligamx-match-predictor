@@ -1,5 +1,6 @@
 """Ficha de equipos y rivalidades. `python -m src.equipos` regenera datos/equipos.csv."""
 import csv
+import unicodedata
 from pathlib import Path
 
 import pandas as pd
@@ -10,12 +11,19 @@ RUTA_EQUIPOS = RAIZ / "datos" / "equipos.csv"
 RUTA_RIVALIDADES = RAIZ / "datos" / "rivalidades.csv"
 DIR_ESCUDOS = RAIZ / "assets" / "escudos"
 
-COLUMNAS = ["equipo", "siglas", "apodo", "ciudad_estado", "estadio", "fundacion",
+COLUMNAS = ["equipo", "nombre", "siglas", "apodo", "ciudad_estado", "estadio", "fundacion",
             "color1", "color2", "color3", "palmares", "escudo"]
 
 # etiqueta en la fuente -> columna del CSV
 CAMPOS = {"Siglas": "siglas", "Apodo": "apodo", "Ciudad y estado": "ciudad_estado",
           "Estadio": "estadio", "Fundación": "fundacion", "Palmarés": "palmares"}
+
+# Nombre para mostrar cuando difiere de la llave (el nombre de MEX.csv). El resto, igual.
+NOMBRES_MOSTRADOS = {
+    "Guadalajara Chivas": "CD Guadalajara", "Atl. San Luis": "Atlético de San Luis",
+    "UNAM Pumas": "Pumas UNAM", "Club America": "Club América", "Club Leon": "Club León",
+    "Queretaro": "Querétaro", "Juarez": "Juárez", "Mazatlan FC": "Mazatlán FC",
+}
 
 # chi.png es Chivas y jag.png es Chiapas: no coinciden con las siglas
 ESCUDOS = {
@@ -40,6 +48,7 @@ def parsear_fuente(texto):
         if linea.startswith("•"):
             actual = {c: "" for c in COLUMNAS}
             actual["equipo"] = linea[1:].strip()
+            actual["nombre"] = NOMBRES_MOSTRADOS.get(actual["equipo"], actual["equipo"])
             actual["escudo"] = ESCUDOS[actual["equipo"]]
             filas.append(actual)
         elif linea.strip():
@@ -64,6 +73,25 @@ def convertir_fuente(ruta_fuente=RUTA_FUENTE, ruta_csv=RUTA_EQUIPOS):
 def cargar_equipos(ruta=RUTA_EQUIPOS):
     """Ficha indexada por equipo. Los campos vacíos quedan como cadena vacía."""
     return pd.read_csv(ruta, dtype=str, keep_default_na=False).set_index("equipo")
+
+
+def nombre_mostrado(equipo, fichas=None):
+    """Nombre para mostrar en la UI. La llave sigue siendo el nombre de MEX.csv.
+    Si el equipo no está en las fichas, devuelve la llave tal cual."""
+    fichas = cargar_equipos() if fichas is None else fichas
+    return fichas.loc[equipo, "nombre"] if equipo in fichas.index else equipo
+
+
+def _clave_orden(texto):
+    """Ordena sin acentos ni mayúsculas ('Querétaro' junto a 'Puebla', no al final)."""
+    sin_acentos = unicodedata.normalize("NFD", texto)
+    return "".join(c for c in sin_acentos if not unicodedata.combining(c)).casefold()
+
+
+def ordenar_por_nombre(equipos, fichas=None):
+    """Llaves ordenadas alfabéticamente por su nombre mostrado."""
+    fichas = cargar_equipos() if fichas is None else fichas
+    return sorted(equipos, key=lambda e: _clave_orden(nombre_mostrado(e, fichas)))
 
 
 def cargar_rivalidades(ruta=RUTA_RIVALIDADES):

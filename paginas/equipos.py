@@ -7,6 +7,7 @@ st.markdown(c.aviso("En rediseño: aquí van las páginas de cada equipo (partid
                     "Mientras tanto, la lista de los 25.", suave=True), unsafe_allow_html=True)
 
 elo = r.modelo()["elo"]
-tarjetas = "".join(c.tarjeta_equipo(e, elo[e], r.escudo_html(e, 48)) for e in sorted(r.equipos().index))
+tarjetas = "".join(c.tarjeta_equipo(e, elo[e], r.escudo_html(e, 48), nombre=r.nombre(e))
+                   for e in r.ordenados(r.equipos().index))
 st.markdown('<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));'
             f'gap:16px;margin-top:24px">{tarjetas}</div>', unsafe_allow_html=True)

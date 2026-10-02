@@ -42,13 +42,14 @@ def color_equipo(equipo):
     return f"var(--team-{slug})" if slug else "var(--accent)"
 
 
-def escudo(b64, px, halo=False):
-    """Escudo en base64 dentro de un círculo. Sin imagen: el círculo vacío `lm-crest`."""
+def escudo(b64, px, halo=False, alt=""):
+    """Escudo en base64 dentro de un círculo. Sin imagen: el círculo vacío `lm-crest`.
+    `alt` es el nombre mostrado del equipo."""
     if not b64:
         return f'<span class="lm-crest" style="--s:{int(px)}px"></span>'
     clase = "lm-crest has-img halo" if halo else "lm-crest has-img"
     return (f'<span class="{clase}" style="--s:{int(px)}px">'
-            f'<img src="data:image/png;base64,{b64}" alt=""></span>')
+            f'<img src="data:image/png;base64,{b64}" alt="{escape(alt)}"></span>')
 
 
 def titulo(texto, grad=None):
@@ -75,19 +76,21 @@ def pie_escudos():
     return f'<div class="lm-footer">{escape(AVISO_ESCUDOS)}</div>'
 
 
-def tarjeta_equipo(equipo, elo, escudo_html, seleccionada=False):
+def tarjeta_equipo(equipo, elo, escudo_html, seleccionada=False, nombre=None):
+    """`equipo` es la llave (da el color); `nombre` es el texto a mostrar."""
     clase = "lm-team is-sel" if seleccionada else "lm-team"
     return (f'<div class="{clase}" style="--team:{color_equipo(equipo)}">{escudo_html}'
-            f'<div><div style="font-weight:600">{escape(equipo)}</div>'
+            f'<div><div style="font-weight:600">{escape(nombre or equipo)}</div>'
             f'<div class="lm-team__elo">Elo {elo:.0f}</div></div></div>')
 
 
-def fila_ranking(pos, equipo, elo, pct, escudo_html, href=None, seleccionada=False):
-    """Fila del ranking. `pct` es el Elo normalizado (0-100) para la barra.
+def fila_ranking(pos, equipo, elo, pct, escudo_html, href=None, seleccionada=False, nombre=None):
+    """Fila del ranking. `pct` es el Elo normalizado (0-100) para la barra; `equipo` es la
+    llave (da el color) y `nombre` el texto a mostrar.
     Sin `href` no es clicable (clase is-static: sin efecto hover)."""
     clase = "lm-elo" + (" is-sel" if seleccionada else "") + ("" if href else " is-static")
     cuerpo = (f'<span class="lm-elo__n">{int(pos)}</span>{escudo_html}'
-              f'<span style="font-weight:600">{escape(equipo)}</span>'
+              f'<span style="font-weight:600">{escape(nombre or equipo)}</span>'
               f'<span class="lm-elo__v">{elo:.0f}</span>'
               f'<span class="lm-elo__bar"><i></i></span>')
     estilo = f'--team:{color_equipo(equipo)};--p:{pct:.1f}%'

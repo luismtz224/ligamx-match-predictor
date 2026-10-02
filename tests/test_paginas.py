@@ -1,11 +1,13 @@
 import re
+from html import escape
 from pathlib import Path
 
 import pytest
 from streamlit.testing.v1 import AppTest
 
 from interfaz import componentes as c
-from interfaz.recursos import modelo
+from interfaz.recursos import escudo_html, modelo, nombre, ordenados
+from src.equipos import cargar_equipos
 
 RAIZ = Path(__file__).resolve().parent.parent
 PAGINAS = ["paginas/predictor.py", "paginas/equipos.py", "paginas/ranking.py",
@@ -41,7 +43,9 @@ def test_ranking_mismo_orden_y_cifras_que_el_modelo():
     html = _html(_correr("paginas/ranking.py"))
     filas = re.findall(r'class="lm-elo[^"]*".*?<span style="font-weight:600">(.*?)</span>'
                        r'<span class="lm-elo__v">(\d+)</span>', html)
-    assert [n for n, _ in filas] == esperado
+    assert [n for n, _ in filas] == [escape(nombre(e)) for e in esperado]  # nombre mostrado
+    assert "Club América" in html and "CD Guadalajara" in html and "Pumas UNAM" in html
+    assert "Club America" not in html and "Guadalajara Chivas" not in html
     assert [int(v) for _, v in filas] == [round(est["elo"][e]) for e in esperado]
 
 
@@ -55,3 +59,17 @@ def test_sobre_el_modelo_tiene_cifras_aviso_y_enlace():
 def test_equipos_lista_los_25():
     html = _html(_correr("paginas/equipos.py"))
     assert html.count('class="lm-team"') == 25
+
+
+def test_equipos_ordenados_por_nombre_mostrado():
+    html = _html(_correr("paginas/equipos.py"))
+    nombres = re.findall(r'<div style="font-weight:600">(.*?)</div><div class="lm-team__elo">', html)
+    esperado = [escape(nombre(e)) for e in ordenados(cargar_equipos().index)]
+    assert nombres == esperado and len(nombres) == 25
+    assert nombres.index("Querétaro") < nombres.index("Santos Laguna")
+    assert "Mazatlán FC" in nombres and "Mazatlan FC" not in nombres
+
+
+def test_alt_del_escudo_es_el_nombre_mostrado():
+    assert 'alt="Club América"' in escudo_html("Club America", 32)
+    assert 'alt="CD Guadalajara"' in escudo_html("Guadalajara Chivas", 48)
