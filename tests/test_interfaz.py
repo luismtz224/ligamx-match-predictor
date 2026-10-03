@@ -297,12 +297,12 @@ def test_ficha_estadio_con_comillas_de_veracruz_y_campos_vacios():
     assert "Apodo" not in c.ficha(dict(f, apodo=""))  # sin apodo se omite la línea
 
 
-def test_ficha_solo_acepta_colores_hex_y_muestra_el_hex():
+def test_ficha_no_muestra_los_colores_del_equipo():
+    """Los colores visten la página (estilo_equipo), no son un dato de la ficha."""
     f = _ficha_peligrosa()
-    f.update(color1="#112233", color2="red;position:fixed", color3="#GGGGGG")
+    f.update(color1="#112233", color2="#445566", color3="#778899")
     h = c.ficha(f)
-    assert 'style="background:#112233"></i>#112233</span>' in h  # muestra con su hex visible
-    assert "position:fixed" not in h and "GGGGGG" not in h
+    assert "lm-swatch" not in h and "Colores" not in h and "#112233" not in h and "background:" not in h
 
 
 def test_elo_actual_etiqueta_y_posicion():
@@ -373,3 +373,167 @@ def test_equipo_de_slug_es_el_inverso_de_slug():
         assert equipo_de_slug(slug) == equipo
     for malo in ("xyz", "", None, "Toluca", ["toluca"], 3):
         assert equipo_de_slug(malo) is None
+
+
+# ===== Colores del equipo como diseño =====
+def _mezcla(c1, c2, pct):
+    """Equivalente de color-mix(in srgb, c1 pct%, c2): componentes sRGB mezclados linealmente."""
+    a, b = (tuple(int(h.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)) for h in (c1, c2))
+    return "#" + "".join(f"{round(x * pct / 100 + y * (100 - pct) / 100):02x}" for x, y in zip(a, b))
+
+
+def test_estilo_equipo_define_los_dos_colores_de_la_pagina():
+    for equipo, slug in c.SLUG.items():
+        h = c.estilo_equipo(equipo)
+        _sin_sangria(h)
+        k = "--page-k:.5;" if equipo in c.BLANCOS else ""
+        assert h == (f'<style>.stApp{{--page-team:var(--team-{slug});'
+                     f'--page-team-2:var(--team-{slug}-2,var(--team-{slug}));{k}}}</style>')
+
+
+def test_blancos_son_exactamente_los_equipos_de_color_blanco():
+    """El tinte de un equipo blanco sería gris neutro: BLANCOS se calcula de los colores del CSS."""
+    from src.formato import luminancia
+    blancos = {e for e, s in c.SLUG.items() if luminancia(_var(f"team-{s}")) > 0.9}
+    assert blancos == c.BLANCOS == {"Lobos BUAP", "Mazatlan FC"}
+
+
+def test_estilo_equipo_solo_acepta_equipos_conocidos():
+    with pytest.raises(KeyError):
+        c.estilo_equipo('x}</style><script>')  # nunca texto libre dentro del <style>
+
+
+def test_el_tinte_de_la_pagina_deja_el_texto_legible_en_los_25_equipos():
+    """El tinte mezcla el color del equipo y su -2 con --bg (los porcentajes se leen del CSS), y
+    el resplandor de la esquina también. --ink y --ink-muted deben leerse sobre lo más claro."""
+    pcts = [int(x) for x in re.findall(r"calc\((\d+)% \* var\(--page-k, 1\)\)", CSS)]
+    assert sorted(pcts) == [12, 18, 20]  # degradado (20 y 12) y resplandor (18)
+    bg, ink, muted = _var("bg"), _var("ink"), _var("ink-muted")
+    for equipo, slug in c.SLUG.items():
+        c1 = _var(f"team-{slug}")
+        try:
+            c2 = _var(f"team-{slug}-2")
+        except AttributeError:  # sin -2 en el CSS: el segundo color es el primero
+            c2 = c1
+        k = 0.5 if equipo in c.BLANCOS else 1  # --page-k
+        # cada color con el mayor porcentaje que el CSS le puede aplicar (estricto)
+        for fondo in (_mezcla(c1, bg, max(pcts) * k), _mezcla(c2, bg, max(pcts) * k)):
+            assert contraste(ink, fondo) >= 7, (equipo, fondo)  # texto principal: AAA
+            assert contraste(muted, fondo) >= 4.5, (equipo, fondo)  # texto secundario: AA
+
+
+def test_css_del_tinte_usa_has_y_las_variables_de_la_pagina():
+    for regla in ('.stApp:has(.lm-hero) [data-testid="stAppViewContainer"]', ".stApp:has(.lm-hero)::after",
+                  ".stApp:has(.lm-hero) .lm-section h2"):
+        assert regla in CSS, regla
+    assert "color-mix(in srgb, var(--page-team) calc(20% * var(--page-k, 1)), var(--bg))" in CSS
+    assert "calc(12% * var(--page-k, 1))" in CSS and "calc(18% * var(--page-k, 1))" in CSS
+    assert "border-left: 4px solid var(--page-team)" in CSS  # el acento de los títulos es una barra
+
+
+def test_el_color_del_equipo_nunca_es_texto_chico():
+    """Chiapas (contraste 3.0) solo en barras, bordes, brillos y cifras grandes: ninguna regla
+    nueva pinta texto con --page-team, y el texto de los títulos sigue en --ink."""
+    nueva = CSS[CSS.index("Colores del equipo como diseño"):]
+    assert not re.search(r"(?<![-\w])color:\s*var\(--(page-team|team)", nueva)
+    assert re.search(r"\.lm-section > h2\s*\{[^}]*font-size", CSS) and "var(--ink)" in CSS
+    # la única cifra grande con el color del equipo es el Elo (inline, 64 px)
+    assert "lm-eloact__n" in c.elo_actual("Chiapas", 1417.0, False)
+    assert re.search(r"\.lm-eloact__n\s*\{[^}]*font-size:\s*64px", CSS)
+
+
+def test_css_respeta_prefers_reduced_motion():
+    assert re.search(r"@media \(prefers-reduced-motion: reduce\)[^{]*\{[^}]*st-key-tarjeta-[^}]*transform: none", CSS)
+    assert "transition: none !important" in CSS  # regla global ya existente
+    assert re.search(r"@media \(prefers-reduced-motion: reduce\)[^{]*\{ \.lm-spark \.ln", CSS)
+
+
+def test_diseno_md_documenta_los_colores_del_equipo():
+    texto = (RAIZ / "DISENO.md").read_text(encoding="utf-8")
+    for clave in ("--page-team", "estilo_equipo", ":has(.lm-hero)", "Chiapas", "prefers-reduced-motion"):
+        assert clave in texto, clave
+
+
+def test_halo_atenuado_en_el_css():
+    m = re.search(r"\.lm-crest\.halo\s*\{[^}]*rgba\(245,245,250,([.\d]+)\) 0%, rgba\(245,245,250,[.\d]+\) (\d+)%", CSS)
+    assert m and m.group(1) == ".45" and m.group(2) == "60"
+
+
+# ===== Enlace de volver, ficha en celular y cifra clara de Chiapas =====
+def _regla(selector):
+    """Cuerpo de la primera regla del CSS cuyo selector es exactamente `selector`."""
+    m = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", CSS)
+    assert m, selector
+    return m.group(1)
+
+
+def test_enlace_de_volver_16px_y_area_tactil_de_48():
+    assert re.search(r"--tap:\s*48px", CSS)
+    texto = _regla('[class*="st-key-volver"] a, [class*="st-key-volver"] a *')
+    assert "font-size: 16px" in texto and "line-height: 24px" in texto  # 16 px como mínimo
+    caja = _regla('[class*="st-key-volver"] a')
+    assert "min-height: var(--tap)" in caja and "min-width: var(--tap)" in caja  # 48 px táctiles
+    assert 'st-key-volver-abajo' in CSS  # el de abajo comparte las reglas por el prefijo de la clase
+
+
+def test_ficha_marca_los_valores_largos():
+    assert c.FACT_LARGO == 24  # a 390 px no caben más de ~24 caracteres junto a la etiqueta
+    f = _ficha_peligrosa()
+    f.update(siglas="a" * 24, apodo="a" * 25, ciudad_estado="", estadio="x",
+             fundacion="", palmares="p" * 90)
+    h = c.ficha(f)
+    assert '<div><dt>Siglas</dt>' in h  # justo en el límite: sigue en una fila
+    assert '<div class="largo"><dt>Apodo</dt>' in h and '<div class="largo"><dt>Palmarés</dt>' in h
+    assert '<div><dt>Estadio</dt>' in h and "Ciudad" not in h
+    _sin_sangria(h)
+
+
+def test_ficha_real_palmares_largo_en_los_25_equipos():
+    fichas = _cargar_equipos()
+    for equipo, f in fichas.iterrows():
+        h = c.ficha(f)
+        assert ('<div class="largo"><dt>Palmarés' in h) == (len(f["palmares"]) > 24), equipo
+    assert '<div class="largo"><dt>Palmarés' in c.ficha(fichas.loc["Toluca"])
+
+
+def test_css_apila_la_ficha_en_celular_y_la_deja_en_fila_en_escritorio():
+    m = re.search(r"@media \(max-width: 599px\)\s*\{([^@]*?)\}\s*(?:\n|$)", CSS[CSS.index("valores largos"):])
+    assert m, "falta la regla para celular"
+    celular = m.group(1)
+    assert ".lm-facts div.largo { flex-direction: column; gap: 0; }" in celular
+    assert ".lm-facts div.largo dd { text-align: left; }" in celular
+    # fuera de la media query, la fila sigue siendo etiqueta | valor (a la derecha)
+    assert "justify-content: space-between" in _regla(".lm-facts div")
+    assert "text-align: right" in _regla(".lm-facts dd")
+
+
+def test_chiapas_cifra_clara_cumple_el_contraste_medido():
+    """--team-chiapas (3.0:1 contra --surface) solo para barras, bordes y brillos; la cifra grande
+    usa --team-chiapas-claro: mismo matiz, y contraste de texto sobre --surface, --bg y el tinte."""
+    import colorsys
+    base, claro = _var("team-chiapas"), _var("team-chiapas-claro")
+    assert base == "#256b56"  # el color de acento no cambia
+    surface, bg = _var("surface"), _var("bg")
+    tinte = _mezcla(base, bg, 20)  # lo más claro que el degradado le puede poner debajo
+    assert contraste(base, surface) == pytest.approx(3.0, abs=0.05)  # lo que ya se había medido
+    for fondo in (surface, bg, tinte):
+        assert contraste(claro, fondo) >= 4.5, fondo
+    assert contraste(claro, surface) > contraste(base, surface) + 2
+    hue = lambda h: colorsys.rgb_to_hls(*[int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)])[0] * 360
+    assert abs(hue(claro) - hue(base)) < 8  # sigue siendo el mismo verde
+
+
+def test_la_cifra_clara_es_solo_para_la_cifra_grande_de_chiapas():
+    assert c.color_cifra("Chiapas") == "var(--team-chiapas-claro)"
+    for e in c.SLUG:
+        if e != "Chiapas":
+            assert c.color_cifra(e) == c.color_equipo(e), e
+    assert 'style="color:var(--team-chiapas-claro)"' in c.elo_actual("Chiapas", 1417.0, False)
+    assert 'style="color:var(--team-toluca)"' in c.elo_actual("Toluca", 1643.6, True, 2, 18)
+    # héroe, gráfica y estilo de página siguen con el color de acento original
+    geo, ext = _geo_ext()
+    for h in (c.heroe("Chiapas", "Chiapas", ""), c.grafica_elo("Chiapas", "Chiapas", geo, ext),
+              c.estilo_equipo("Chiapas")):
+        assert "team-chiapas-claro" not in h
+    assert "--team-chiapas)" in c.heroe("Chiapas", "Chiapas", "")
+    assert CSS.count("team-chiapas-claro") == 2  # su definición y el comentario de la regla

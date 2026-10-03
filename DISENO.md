@@ -34,7 +34,8 @@ Llamar `inyectar_css()` una vez por página, al inicio. Si `st.navigation` repin
 - No mostrar datos inventados: los previews del design system traen datos de ejemplo (por ejemplo «Estadio Banorte», «41 títulos», el 17-15-11). Todo sale de los CSV y del modelo.
 - HTML sin sangría ni líneas en blanco dentro de un bloque: Markdown convierte 4 espacios en bloque de código.
 - Escapar con `html.escape` todo texto que venga de datos.
-- Animaciones solo CSS; `prefers-reduced-motion` ya las apaga.
+- Animaciones solo CSS; `prefers-reduced-motion` ya las apaga (también el desplazamiento al pasar el mouse sobre tarjetas y filas, y la línea de la gráfica queda dibujada).
+- Los colores del equipo visten la página del equipo; no son un dato de la ficha (sin muestras ni hex). Ver «Colores del equipo como diseño».
 
 ## Marcado de cada componente
 
@@ -109,11 +110,37 @@ Gráfica de Elo: SVG en `st.markdown` con `<svg class="lm-spark" viewBox="0 0 W 
 
 Botón de descarga: `st.download_button` (ya está estilizado).
 
+## Colores del equipo como diseño
+
+La página de un equipo (`paginas/equipo.py`) se viste con sus colores, sin JavaScript:
+
+1. `interfaz.componentes.estilo_equipo(equipo)` devuelve un `<style>` de una línea que define `--page-team` (su color) y `--page-team-2` (su `-2`; si no existe, el mismo color) sobre `.stApp`. Va al final de la página: no deja hueco arriba y desaparece al cambiar de página. Solo recibe llaves conocidas (`SLUG`), nunca texto libre.
+2. Las reglas que los usan viven en `estilos/custom.css` (bloque «Colores del equipo como diseño») y se activan con `.stApp:has(.lm-hero)`: el héroe solo existe en esa página. Sin `:has()` (navegadores muy viejos) la página queda en Noche, sin tinte.
+3. Qué se tiñe:
+   - Fondo: degradado de `--page-team` (≤ 20 %) y `--page-team-2` (≤ 12 %) mezclados con `--bg`, más un resplandor en la esquina (≤ 18 %). Sigue siendo Noche. `--page-k` (1; `.5` en Lobos BUAP y Mazatlán, que son blancos y teñirían de gris neutro) escala la intensidad.
+   - Héroe: borde del color y brillo (`box-shadow`).
+   - Títulos de sección: barra de 4 px a la izquierda; el texto sigue en `--ink`.
+   - Tarjetas del Ranking y de la rejilla de entrada: borde y brillo al pasar el mouse (`--team` de cada tarjeta); con `prefers-reduced-motion` no se desplazan.
+4. Reglas: el texto siempre va en `--ink` o `--ink-muted`; el color del equipo nunca pinta texto chico (Chiapas tiene contraste 3.0: solo barras, bordes y brillos; la cifra grande del Elo usa `--team-chiapas-claro`, `#3aa786`: mismo matiz y luminosidad .44, con 6.4:1 contra `--surface`, 6.8:1 contra `--bg` y 5.9:1 contra el tinte más claro; `componentes.color_cifra`, solo para cifras grandes). Una prueba mezcla cada uno de los 25 colores con `--bg` y comprueba contraste ≥ 7:1 para `--ink` y ≥ 4.5:1 para `--ink-muted` sobre lo más claro del degradado.
+5. Selectores frágiles: `.stApp` (clase usada desde la Fase 3), los hooks documentados `st-key-*` y `[data-testid="stAppViewContainer"]`, que el CSS ya usaba para el fondo: tiene fondo opaco `!important` y tapa el `::before` de `.stApp`, así que el degradado va directo en él. Se verifica en las capturas al actualizar Streamlit. `:has()` y `color-mix()` requieren navegadores de 2023 en adelante.
+
+## Equipos: rejilla y página oculta
+
+- `paginas/equipos.py` es la entrada: título corto, selector (llega vacío) y la rejilla de 25 tarjetas. `/equipos?equipo=<slug>` **redirige** con `st.switch_page` a `paginas/equipo.py`; sin parámetro o con un slug inválido muestra la rejilla y limpia la URL. Los enlaces del Ranking siguen yendo a `?equipo=<slug>`.
+- `paginas/equipo.py` es una `st.Page(..., url_path="equipo", visibility="hidden")`: arriba «← Todos los equipos», el selector, la página del equipo y, al final, otro «← Todos los equipos» (`st-key-volver` y `st-key-volver-abajo`, 48 px de alto). **No lleva rejilla**: se quitó porque al tocar otra tarjeta desde el final de la página no se abría desde arriba (reportado en el dispositivo de Luis). Cambiar de equipo es con el selector, que ya está arriba, o volviendo a la rejilla con cualquiera de los dos enlaces. Sin equipo o con slug inválido vuelve a la rejilla.
+- Enlace «← Todos los equipos» (arriba y abajo): 16 px como mínimo (el `a` y todo lo que lleva dentro: Streamlit pinta el texto de `page_link` más chico por defecto, por eso la regla incluye `a *`) y 48 × 48 px de área táctil (`--tap`).
+- Ficha: los valores de más de 24 caracteres (`componentes.FACT_LARGO`: palmarés, estadio, ciudad...) llevan `class="largo"`. A 599 px o menos van en columna, con la etiqueta arriba y el texto abajo alineado a la izquierda; en escritorio quedan en fila (etiqueta a la izquierda, valor a la derecha). Los valores cortos (siglas, apodo, fundación) siempre van en fila.
+- **Por qué dos páginas:** al cambiar solo los query params de una misma página, el navegador mantiene anclado el viewport a la tarjeta tocada (que en la página del equipo está al final) y se cae al fondo; con `overflow-anchor: none` el scroll se queda donde estaba. Streamlit solo reinicia el scroll a 0 al cambiar de *página* (medido). Cada tarjeta enlaza a Equipos y este redirige: el cambio de página abre el equipo desde arriba sin JavaScript.
+- Cada tarjeta y fila: `st.container(key="tarjeta-<slug>" / "fila-<slug>")` con el HTML y un `st.page_link` transparente encima (`st-key-*` y la etiqueta `a`).
+- Costo conocido: dentro de un equipo el menú lateral no resalta «Equipos» (la página oculta no está en la lista).
+
 ## Streamlit: qué es frágil
 
 - Selectores `[data-testid]` y `[data-baseweb]` del bloque «Adaptación a Streamlit» del CSS cambian entre versiones. Probar al actualizar.
 - Barra de navegación inferior fija en celular: no se hace. `st.navigation` en barra lateral (menú en celular).
 - Selector de equipo: el escudo va al lado, no dentro de la opción.
+- `st.page_link` a la misma página no actualiza la URL del navegador (solo los query params del servidor): por eso la navegación entre equipos pasa por un cambio de página.
+- Streamlit resta 16 px (`margin-bottom: -1rem`) al contenedor de markdown: en tarjetas y filas con enlace se anula en `custom.css`.
 - La barra del ranking con color por equipo no existe como columna: se pinta la lista en HTML.
 - Sin cursor propio, botones magnéticos, parallax ni scroll suave (requieren JavaScript).
 - Las animaciones se repiten en cada recarga por cambio de selector; no animar bloques grandes que no cambian.

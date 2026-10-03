@@ -1,7 +1,6 @@
 """HTML de los componentes de DISENO.md. Funciones puras (sin Streamlit) que devuelven una
 sola línea de HTML: sin sangría ni saltos de línea, porque Markdown convierte eso en código.
 Todo texto que viene de datos pasa por html.escape."""
-import re
 from html import escape
 
 from src.formato import con_signo, fecha_corta, mes_anio
@@ -43,6 +42,16 @@ def color_equipo(equipo):
     """
     slug = SLUG.get(equipo)
     return f"var(--team-{slug})" if slug else "var(--accent)"
+
+
+# Chiapas (3.0:1 contra --surface) usa su variante clara solo para la cifra grande del Elo
+COLOR_CIFRA = {"Chiapas": "var(--team-chiapas-claro)"}
+
+
+def color_cifra(equipo):
+    """Color de una cifra grande del equipo: su variante clara si el color de acento no alcanza
+    contraste de texto (Chiapas); si no, el mismo `color_equipo`. Solo para cifras grandes."""
+    return COLOR_CIFRA.get(equipo) or color_equipo(equipo)
 
 
 def escudo(b64, px, halo=False, alt=""):
@@ -253,28 +262,39 @@ def modelo_vs_mercado(filas):
 
 
 # ===== Equipos =====
-def _hex(color):
-    """El color solo si es #RRGGBB (va dentro de un atributo style)."""
-    return color if re.fullmatch(r"#[0-9A-Fa-f]{6}", color or "") else None
-
-
 def heroe(equipo, nombre, escudo_html):
     """Escudo grande con el nombre mostrado y borde del color del equipo."""
     return (f'<div class="lm-hero" style="--team:{color_equipo(equipo)}">{escudo_html}'
             f'<h1 class="lm-h1">{escape(nombre)}</h1></div>')
 
 
+FACT_LARGO = 24  # caracteres: más que esto no cabe junto a la etiqueta a 390 px
+
+
 def ficha(f):
-    """Ficha del equipo (fila de equipos.csv). Los campos vacíos se omiten."""
+    """Ficha del equipo (fila de equipos.csv). Los campos vacíos se omiten. Los colores del
+    equipo no se muestran como dato: visten la página (`estilo_equipo`)."""
     campos = (("Siglas", f["siglas"]), ("Apodo", f["apodo"]), ("Ciudad", f["ciudad_estado"]),
               ("Estadio", f["estadio"]), ("Fundación", f["fundacion"]), ("Palmarés", f["palmares"]))
-    filas = "".join(f'<div><dt>{escape(k)}</dt><dd>{escape(v)}</dd></div>' for k, v in campos if v)
-    muestras = "".join(
-        f'<span class="lm-swatch"><i style="background:{h}"></i>{escape(h)}</span>'
-        for h in (_hex(f[k]) for k in ("color1", "color2", "color3")) if h)
-    if muestras:
-        filas += f'<div><dt>Colores</dt><dd class="lm-swatches">{muestras}</dd></div>'
+    # los valores largos (palmarés, estadio...) llevan `largo`: en celular van con la etiqueta arriba
+    filas = "".join(f'<div{" class=\"largo\"" if len(v) > FACT_LARGO else ""}><dt>{escape(k)}</dt>'
+                    f'<dd>{escape(v)}</dd></div>' for k, v in campos if v)
     return f'<div class="lm-record"><dl class="lm-facts">{filas}</dl></div>'
+
+
+# equipos cuyo color es blanco: su tinte sería gris neutro, así que se atenúa a la mitad (--page-k)
+BLANCOS = {"Lobos BUAP", "Mazatlan FC"}
+
+
+def estilo_equipo(equipo):
+    """<style> con los colores de la página del equipo (`--page-team` y `--page-team-2`) sobre
+    `.stApp`. Sin JavaScript; desaparece al salir de la página. Las reglas que los usan viven en
+    estilos/custom.css (`.stApp:has(.lm-hero)`). Sin -2 en el CSS, el segundo color es el primero.
+    Los equipos de `BLANCOS` llevan además `--page-k:.5` (mitad de intensidad)."""
+    slug = SLUG[equipo]  # solo slugs conocidos: nunca texto de datos dentro del <style>
+    k = "--page-k:.5;" if equipo in BLANCOS else ""
+    return (f'<style>.stApp{{--page-team:var(--team-{slug});'
+            f'--page-team-2:var(--team-{slug}-2,var(--team-{slug}));{k}}}</style>')
 
 
 def elo_actual(equipo, elo, activo, posicion=None, n_activos=None):
@@ -283,7 +303,7 @@ def elo_actual(equipo, elo, activo, posicion=None, n_activos=None):
     pos = (f'<p class="lm-muted" style="margin:0">Posición {int(posicion)} de {int(n_activos)} activos</p>'
            if activo and posicion else "")
     return (f'<div class="lm-eloact"><div class="lm-caption">{etiqueta}</div>'
-            f'<div class="lm-eloact__n" style="color:{color_equipo(equipo)}">{elo:,.0f}</div>{pos}</div>')
+            f'<div class="lm-eloact__n" style="color:{color_cifra(equipo)}">{elo:,.0f}</div>{pos}</div>')
 
 
 def resumen_elo(nombre, ext):

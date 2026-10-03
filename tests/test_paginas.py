@@ -17,7 +17,7 @@ PAGINAS = ["paginas/predictor.py", "paginas/equipos.py", "paginas/ranking.py",
            "paginas/sobre_modelo.py"]
 
 
-CON_ENLACES = {"paginas/equipos.py", "paginas/ranking.py"}  # usan st.page_link: necesitan st.navigation
+CON_ENLACES = {"paginas/equipos.py", "paginas/equipo.py", "paginas/ranking.py"}  # usan st.page_link: necesitan st.navigation
 
 
 def _correr(ruta, equipo=None):
@@ -73,21 +73,6 @@ def test_sobre_el_modelo_tiene_cifras_aviso_y_enlace():
     assert c.AVISO_EDUCATIVO in html and "2,651 partidos" in html
 
 
-def test_equipos_lista_los_25():
-    html = _html(_correr("paginas/equipos.py"))
-    assert len(re.findall(r'class="lm-team( is-sel)?"', html)) == 25
-    assert html.count("lm-team is-sel") == 1  # el equipo elegido
-
-
-def test_equipos_ordenados_por_nombre_mostrado():
-    html = _html(_correr("paginas/equipos.py"))
-    nombres = re.findall(r'<div style="font-weight:600">(.*?)</div><div class="lm-team__elo">', html)
-    esperado = [escape(nombre(e)) for e in ordenados(cargar_equipos().index)]
-    assert nombres == esperado and len(nombres) == 25
-    assert nombres.index("Querétaro") < nombres.index("Santos Laguna")
-    assert "Mazatlán FC" in nombres and "Mazatlan FC" not in nombres
-
-
 def test_alt_del_escudo():
     """alt="" cuando el nombre va al lado; el nombre solo cuando el escudo va solo."""
     assert 'alt=""' in escudo_html("Club America", 32)
@@ -96,9 +81,10 @@ def test_alt_del_escudo():
     for ruta in ("paginas/ranking.py", "paginas/equipos.py", "paginas/predictor.py"):
         html = _html(_correr(ruta))
         alts = re.findall(r'<img [^>]*alt="([^"]*)"', html)
-        # en Equipos, el escudo del héroe va solo (sin nombre al lado) y lleva el nombre
-        permitidos = {"", "Club América"} if ruta == "paginas/equipos.py" else {""}
-        assert alts and set(alts) == permitidos, ruta
+        assert alts and set(alts) == {""}, ruta
+    # en la página de un equipo, el escudo del héroe va solo (sin nombre al lado) y lleva el nombre
+    alts = re.findall(r'<img [^>]*alt="([^"]*)"', _html(_correr("paginas/equipo.py", equipo="america")))
+    assert set(alts) == {"", "Club América"} and alts.count("Club América") == 1
 
 
 # (local, visitante, variable CSS esperada del visitante)
@@ -145,7 +131,7 @@ def test_predictor_momios_y_mercado():
     assert re.search(r'lm-odds__d (up|down)">[+−]\d+\.\d pp', html)
 
 
-# ===== Fase 5: página de Equipos =====
+# ===== Fase 5: Equipos (rejilla) y Equipo (página oculta) =====
 import pandas as pd  # noqa: E402
 
 from interfaz.recursos import equipo_de_slug, partidos  # noqa: E402
@@ -153,9 +139,17 @@ from src import historial as hs  # noqa: E402
 from src.equipos import cargar_rivalidades, rivalidades_de  # noqa: E402
 from src.formato import fecha_corta, temporada_corta, texto_racha  # noqa: E402
 
+VOLVER = "← Todos los equipos"
+
+
+def _sin_css(at):
+    """HTML de la página sin el <style> global de app.py (que menciona todas las clases)."""
+    return "".join(m.value for m in at.markdown if not m.value.startswith("<style>/*"))
+
 
 def _eq(slug):
-    at = _correr("paginas/equipos.py", equipo=slug)
+    """Página de un equipo (/equipo?equipo=<slug>)."""
+    at = _correr("paginas/equipo.py", equipo=slug)
     return at, _html(at)
 
 
@@ -168,10 +162,15 @@ def _resumen(html, etiqueta):
     return int(re.search(rf"<dt>{etiqueta}</dt><dd>([\d,]+)<small>", html).group(1).replace(",", ""))
 
 
+def _es_rejilla(at):
+    html = _sin_css(at)
+    return ('<h1 class="lm-h1">Equipos</h1>' in html and "lm-hero" not in html
+            and at.selectbox[0].value is None and not at.get("button_group"))
+
+
 def test_equipos_toluca_activo():
     at, html = _eq("toluca")
     est = modelo()
-    feat, elo, _ = partidos()
     assert at.selectbox[0].value == "Toluca"
     pos = hs.posicion("Toluca", est["elo"], est["activos"])
     assert ">Elo actual<" in html and f"{est['elo']['Toluca']:,.0f}" in html
@@ -206,40 +205,107 @@ def test_equipos_atl_san_luis_hueco_y_fundacion():
     assert at.selectbox[0].value == "Atl. San Luis"
     assert "Sus partidos empiezan en 2012/13, antes de la fundación del club: probablemente" in html
     assert "El trazo se corta donde el equipo no jugó (más de un año)." in html
-    assert html.count('class="ln"') == 1 and html.count(" M") + html.count('d="M') >= 1
     d = re.search(r'<path class="ln" pathLength="1" d="([^"]*)"', html).group(1)
     assert d.count("M") == 2
     assert _resumen(html, "Hoy") == round(est["elo"]["Atl. San Luis"])
-    # el aviso de fundación no sale en equipos fundados antes de 2012
-    assert "antes de la fundación" not in _eq("toluca")[1]
+    assert "antes de la fundación" not in _eq("toluca")[1]  # solo a quien corresponde
 
 
-def test_equipos_query_param_selecciona_y_slug_invalido_cae_al_defecto():
-    assert _eq("cruz-azul")[0].selectbox[0].value == "Cruz Azul"
-    for malo in ("xyz", "", "Toluca"):
-        at, html = _eq(malo)
-        assert at.selectbox[0].value == "Club America" and "Club América" in html
-    at = _correr("paginas/equipos.py")  # sin parámetro
-    assert at.selectbox[0].value == "Club America"
-    assert at.query_params["equipo"] == ["america"]  # la URL queda con el equipo mostrado
+# --- Equipos: rejilla como puerta de entrada ---
+def test_equipos_sin_parametro_muestra_solo_la_rejilla():
+    at = _correr("paginas/equipos.py")
+    assert _es_rejilla(at)
+    html = _sin_css(at)
+    assert len(re.findall(r'class="lm-team( is-sel)?"', html)) == 25 and "is-sel" not in html
+    assert len(at.get("page_link")) == 25  # sin «← Todos los equipos»
+    assert "desde 2012" in html and "<style>.stApp{--page-team" not in html  # sin colores de equipo
+    assert dict(at.query_params) == {}
 
 
-def test_equipos_cambiar_el_selector_actualiza_la_url_y_el_equipo():
-    at = _correr("paginas/equipos.py", equipo="toluca")
+def test_equipos_ordenados_por_nombre_en_la_rejilla():
+    html = _sin_css(_correr("paginas/equipos.py"))
+    nombres = re.findall(r'<div style="font-weight:600">(.*?)</div><div class="lm-team__elo">', html)
+    esperado = [escape(nombre(e)) for e in ordenados(cargar_equipos().index)]
+    assert nombres == esperado and len(nombres) == 25
+    assert nombres.index("Querétaro") < nombres.index("Santos Laguna")
+    assert "Mazatlán FC" in nombres and "Mazatlan FC" not in nombres
+
+
+def test_equipos_slug_invalido_cae_a_la_rejilla_y_limpia_la_url():
+    for malo in ("xyz", "", "Toluca", "toluca "):
+        at = _correr("paginas/equipos.py", equipo=malo)
+        assert _es_rejilla(at), malo
+        assert dict(at.query_params) == {}, malo  # la URL queda limpia
+
+
+def test_equipos_con_slug_redirige_a_la_pagina_del_equipo():
+    """/equipos?equipo=<slug> (enlaces del Ranking, tarjetas y URLs compartidas) abre el equipo."""
+    at = _correr("paginas/equipos.py", equipo="cruz-azul")
+    assert at.selectbox[0].value == "Cruz Azul" and "lm-hero" in _sin_css(at)
+    assert at.query_params["equipo"] == ["cruz-azul"]
+
+
+def test_equipos_elegir_en_el_selector_abre_el_equipo():
+    at = _correr("paginas/equipos.py")
+    at.selectbox[0].set_value("Atlas").run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.selectbox[0].value == "Atlas" and "lm-hero" in _sin_css(at)
+    assert at.query_params["equipo"] == ["atlas"]
+
+
+# --- Equipo: página de un equipo ---
+def _planos(nodo):
+    """Elementos de un árbol de AppTest en orden de aparición (recorre los bloques)."""
+    for hijo in nodo.children.values():
+        if hasattr(hijo, "children"):
+            yield from _planos(hijo)
+        else:
+            yield hijo
+
+
+def test_equipo_con_slug_tiene_volver_arriba_y_abajo_y_ninguna_rejilla():
+    at, html = _eq("toluca")
+    enlaces = at.get("page_link")
+    assert len(enlaces) == 2  # arriba y abajo; las tarjetas ya no están en la página de un equipo
+    for e in enlaces:
+        assert e.proto.label == VOLVER and e.proto.query_string == "" and e.proto.page == "equipos"
+    sin_css = _sin_css(at)
+    assert 'class="lm-team' not in sin_css and "Todos los equipos</h2>" not in sin_css
+    assert not any(e.proto.query_string for e in enlaces)  # ningún enlace a otro equipo
+    # orden: primero el enlace, después el héroe, y al final (tras los clásicos) el otro enlace
+    planos = list(_planos(at.main))
+    pos = lambda f: next(i for i, e in enumerate(planos) if f(e))
+    es_link = lambda e: getattr(e, "type", "") == "page_link"
+    md_con = lambda txt: (lambda e: getattr(e, "type", "") == "markdown" and txt in e.value)
+    primero = pos(es_link)
+    ultimo = max(i for i, e in enumerate(planos) if es_link(e))
+    assert primero < pos(md_con('class="lm-hero"')) and pos(md_con("Clásicos</h2>")) < ultimo
+
+
+def test_equipo_slug_invalido_o_ausente_cae_a_la_rejilla_sin_error():
+    for slug in ("xyz", "", None):
+        at = _correr("paginas/equipo.py", equipo=slug)
+        assert _es_rejilla(at), slug
+        assert dict(at.query_params) == {}, slug
+
+
+def test_equipo_cambiar_el_selector_actualiza_la_url_y_el_equipo():
+    at, _ = _eq("toluca")
     at.selectbox[0].set_value("Atlas").run()
     assert not at.exception and at.selectbox[0].value == "Atlas"
-    assert at.query_params["equipo"] == ["atlas"] and "Atlas" in _html(at)
+    assert at.query_params["equipo"] == ["atlas"] and 'alt="Atlas"' in _html(at)
 
 
-def test_equipos_la_rejilla_tiene_25_enlaces_con_su_slug():
-    at, _ = _eq("toluca")
-    enlaces = at.get("page_link")
-    assert len(enlaces) == 25
-    slugs = [e.proto.query_string.split("=", 1)[1] for e in enlaces]
-    assert sorted(slugs) == sorted(c.SLUG.values())
-    for e in enlaces:
-        assert equipo_de_slug(e.proto.query_string.split("=", 1)[1]) is not None
-        assert e.proto.page == "equipos"
+def test_equipo_abierto_por_enlace_conserva_el_equipo_al_usar_el_filtro():
+    """Regresión de la URL: tras llegar desde un enlace, una interacción (pastilla) no debe
+    volver al equipo anterior."""
+    at = _correr("paginas/equipos.py", equipo="toluca")
+    at.query_params["equipo"] = "chiapas"  # lo que hace el clic en la tarjeta de Chiapas
+    at.run()
+    assert at.selectbox[0].value == "Chiapas" and at.query_params["equipo"] == ["chiapas"]
+    at.get("button_group")[0].set_value("2013/2014").run()
+    assert not at.exception and at.selectbox[0].value == "Chiapas"
+    assert at.query_params["equipo"] == ["chiapas"] and 'alt="Chiapas"' in _html(at)
 
 
 def test_ranking_18_enlaces_con_su_slug_y_query_params():
@@ -250,17 +316,15 @@ def test_ranking_18_enlaces_con_su_slug_y_query_params():
     esperado = [c.SLUG[e] for e in sorted(est["activos"], key=lambda e: -est["elo"][e])]
     assert [e.proto.query_string for e in enlaces] == [f"equipo={s}" for s in esperado]
     assert {equipo_de_slug(s) for s in esperado} == set(est["activos"])
-    assert all(e.proto.page == "equipos" for e in enlaces)
+    assert all(e.proto.page == "equipos" for e in enlaces)  # siguen yendo a /equipos?equipo=<slug>
     assert [nombre(equipo_de_slug(s)) for s in esperado] == [e.proto.label for e in enlaces]
 
 
-def test_equipos_filtro_de_temporada_afecta_lo_que_debe_y_no_lo_demas():
+def test_equipo_filtro_de_temporada_afecta_lo_que_debe_y_no_lo_demas():
     feat, elo, _ = partidos()
     est = modelo()
-    base_at, base = _eq("toluca")
-    at = base_at
-    pills = at.get("button_group")[0]
-    pills.set_value("2025/2026").run()
+    at, base = _eq("toluca")
+    at.get("button_group")[0].set_value("2025/2026").run()
     assert not at.exception, [e.value for e in at.exception]
     html = _html(at)
     pe = hs.partidos_equipo(feat, "Toluca", elo)
@@ -269,7 +333,7 @@ def test_equipos_filtro_de_temporada_afecta_lo_que_debe_y_no_lo_demas():
     assert f"de {pf['elo_antes'].iloc[0]:,.0f} en {fecha_corta(pf['fecha'].iloc[0])[3:]}" in _aria(html)
     assert _aria(html) != _aria(base)
     rec = hs.record(pf)
-    for lado, i in (("Local", 0), ("Visitante", 1)):
+    for lado in ("Local", "Visitante"):
         assert f"<dt>Partidos</dt><dd>{int(rec.loc[lado, 'PJ'])}</dd>" in html
     assert "<dt>Partidos</dt><dd>274</dd>" in base and "<dt>Partidos</dt><dd>274</dd>" not in html
     forma = re.search(r'class="lm-forma".*?Rivales', html, re.S).group(0)
@@ -281,19 +345,19 @@ def test_equipos_filtro_de_temporada_afecta_lo_que_debe_y_no_lo_demas():
     for texto in (f"{est['elo']['Toluca']:,.0f}</div>", "Posición", "Racha actual",
                   texto_racha(*hs.racha(pe))):
         assert texto in html, texto
-    clasicos_base = re.search(r"Clásicos.*?Todos los equipos", base, re.S).group(0)
-    clasicos_filtrado = re.search(r"Clásicos.*?Todos los equipos", html, re.S).group(0)
+    clasicos_base = re.search(r"Clásicos</h2>.*", base, re.S).group(0)
+    clasicos_filtrado = re.search(r"Clásicos</h2>.*", html, re.S).group(0)
     assert clasicos_base == clasicos_filtrado
     assert "<dt>Final</dt>" in html  # con filtro, la última cifra ya no es «Hoy»
 
 
-def test_equipos_filtro_a_una_temporada_sin_rivales_con_6_duelos():
+def test_equipo_filtro_a_una_temporada_sin_rivales_con_6_duelos():
     at, _ = _eq("toluca")
     at.get("button_group")[0].set_value("2025/2026").run()
     assert "Sin suficientes duelos" in _html(at)  # casi ningún equipo tiene 6 duelos en una temporada
 
 
-def test_equipos_cambiar_de_equipo_reinicia_el_filtro():
+def test_equipo_cambiar_de_equipo_reinicia_el_filtro():
     at, _ = _eq("toluca")
     at.get("button_group")[0].set_value("2025/2026").run()
     at.selectbox[0].set_value("Atlas").run()
@@ -302,13 +366,12 @@ def test_equipos_cambiar_de_equipo_reinicia_el_filtro():
     assert "<dt>Hoy</dt>" in _html(at)
 
 
-def test_equipos_clasicos_con_su_n_real(datos_pagina=None):
+def test_equipo_clasicos_con_su_n_real():
     feat, _, _ = partidos()
     riv = cargar_rivalidades()
     esperados = {"Necaxa": 1, "Leones Negros": 2, "Lobos BUAP": 4, "Juarez": 14, "Atl. San Luis": 16}
     for equipo, n in esperados.items():
-        slug = c.SLUG[equipo]
-        html = _eq(slug)[1]
+        html = _eq(c.SLUG[equipo])[1]
         pares = rivalidades_de(equipo, riv)
         assert pares, equipo
         for rival, nombre_clasico in pares:
@@ -321,33 +384,37 @@ def test_equipos_clasicos_con_su_n_real(datos_pagina=None):
     assert "Sin clásicos registrados." in _eq("toluca")[1]
 
 
-def test_equipos_html_una_linea_y_escudos_con_alt_correcto():
-    for slug in ("toluca", "chiapas", "san-luis"):
-        at, _ = _eq(slug)
+def test_equipos_html_una_linea_en_las_dos_vistas():
+    for ruta, slug in (("paginas/equipos.py", None), ("paginas/equipo.py", "toluca"),
+                       ("paginas/equipo.py", "chiapas"), ("paginas/equipo.py", "san-luis")):
+        at = _correr(ruta, equipo=slug)
         for m in at.markdown:
-            if m.value.startswith("<style>"):
+            if m.value.startswith("<style>/*"):
                 continue
             assert "\n" not in m.value and m.value == m.value.strip(), m.value[:80]
 
 
-def test_equipos_un_enlace_reescribe_la_url_del_navegador(monkeypatch):
-    """Regresión: al hacer clic en una tarjeta de la misma página, Streamlit cambia los query
-    params en el servidor pero no la URL del navegador. Si la página no la reescribe, la
-    siguiente interacción (p. ej. una pastilla) vuelve al equipo anterior. AppTest no tiene
-    URL de navegador: se vigila que la página envíe el cambio."""
-    from streamlit.runtime.state.query_params import QueryParams
-    enviados = []
-    original = QueryParams._send_query_param_msg
+# --- colores del equipo como diseño ---
+def test_equipo_inyecta_sus_colores_y_la_rejilla_no():
+    for slug in ("america", "chiapas", "pachuca"):
+        html = _eq(slug)[1]
+        assert f"<style>.stApp{{--page-team:var(--team-{slug});" in html
+        assert html.count("<style>.stApp{--page-team") == 1
+    assert "<style>.stApp{--page-team" not in _sin_css(_correr("paginas/equipos.py"))
+    # sin ficha de colores: ya no hay muestras ni hex
+    html = _eq("toluca")[1]
+    assert "lm-swatch" not in html and "<dt>Colores</dt>" not in html
 
-    def espia(self):
-        enviados.append(str(self._query_params.get("equipo")))
-        return original(self)
 
-    monkeypatch.setattr(QueryParams, "_send_query_param_msg", espia)
-    at = _correr("paginas/equipos.py", equipo="toluca")
-    enviados.clear()
-    at.query_params["equipo"] = "chiapas"  # lo que hace el clic en la tarjeta de Chiapas
-    at.run()
-    assert not at.exception and at.selectbox[0].value == "Chiapas"
-    assert enviados and "chiapas" in enviados[-1]  # la URL del navegador se corrige
+def test_equipo_chiapas_usa_su_cifra_clara_y_los_demas_no():
+    chiapas = _eq("chiapas")[1]
+    assert chiapas.count('class="lm-eloact__n" style="color:var(--team-chiapas-claro)"') == 1
+    assert 'class="lm-hero" style="--team:var(--team-chiapas)"' in chiapas  # el borde sigue siendo el acento
+    for slug in ("toluca", "america", "pachuca"):
+        assert "team-chiapas-claro" not in _sin_css(_correr("paginas/equipo.py", equipo=slug)), slug
 
+
+def test_ficha_de_la_pagina_marca_el_palmares_largo():
+    html = _eq("toluca")[1]
+    assert '<div class="largo"><dt>Palmarés</dt>' in html
+    assert '<div><dt>Siglas</dt><dd>TOL</dd></div>' in html  # lo corto sigue en una fila

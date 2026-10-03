@@ -46,15 +46,15 @@ def _texto(d, xy, txt, tam, color=TEXTO, peso=400, ancla="ls", ancho_max=None):
 
 def _halo(lienzo, x, y, lado):
     """Resplandor claro detrás del escudo (para los que se pierden en fondo oscuro), como
-    `.lm-crest.halo` del CSS: blanco al centro que se desvanece hacia el 72% del radio."""
+    `.lm-crest.halo` del CSS: blanco (alpha .45) al centro que se desvanece hacia el 60% del radio."""
     capa = Image.new("RGBA", (lado, lado), (0, 0, 0, 0))
     px = capa.load()
     r = lado / 2
     for j in range(lado):
         for i in range(lado):
-            t = ((i - r + 0.5) ** 2 + (j - r + 0.5) ** 2) ** 0.5 / (0.72 * r)
+            t = ((i - r + 0.5) ** 2 + (j - r + 0.5) ** 2) ** 0.5 / (0.60 * r)
             if t < 1:
-                px[i, j] = (245, 245, 250, round(230 * (1 - t)))
+                px[i, j] = (245, 245, 250, round(115 * (1 - t)))
     lienzo.alpha_composite(capa, (x, y))
 
 

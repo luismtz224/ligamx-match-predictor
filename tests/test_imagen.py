@@ -70,12 +70,20 @@ def test_segmento_oscuro_lleva_borde():
 
 
 def test_halo_aclara_el_fondo_detras_del_escudo():
-    """Atlas y Lobos BUAP llevan halo: el fondo detrás del escudo deja de ser el color base."""
+    """Atlas y Lobos BUAP llevan halo (alpha .45 y radio 60 %, como `.lm-crest.halo`): el fondo
+    detrás del escudo deja de ser el color base, pero sin el resplandor fuerte de antes."""
     args = ("A", "B", [40, 20, 40], ("#ffd500", "#5b86e8"),
             DIR_ESCUDOS / "512" / "ame.png", DIR_ESCUDOS / "512" / "ats.png")
     _, _, sin = _abrir(generar_png(*args))
     _, _, con = _abrir(generar_png(*args, halos=(False, True)))
-    # esquina del cuadro del escudo visitante, dentro del halo pero fuera del escudo
-    x, y = 1080 - 64 - 200 + 60, 136 + 60
+    x0, y0 = 1080 - 64 - 200, 136  # cuadro del escudo visitante (200 px)
+    # dentro del halo (a 43 px del centro) pero fuera del escudo
+    x, y = x0 + 77, y0 + 63
     assert sin.getpixel((x, y)) == (7, 7, 13)
-    assert sum(con.getpixel((x, y))) > sum(sin.getpixel((x, y))) + 60
+    aclarado = sum(con.getpixel((x, y))) - sum(sin.getpixel((x, y)))
+    assert 60 < aclarado < 150  # con alpha .9 eran ~260: el halo se atenuó
+    # más allá del 60 % del radio ya no hay halo (antes llegaba al 72 %)
+    for dx, dy in ((10, 10), (190, 10), (95, 34), (97, 34)):  # los dos últimos: transparentes a ~66 px del centro
+        assert con.getpixel((x0 + dx, y0 + dy)) == sin.getpixel((x0 + dx, y0 + dy))
+    # el halo no cambia nada fuera del cuadro del escudo
+    assert con.getpixel((x0 - 20, y0 + 100)) == sin.getpixel((x0 - 20, y0 + 100))
