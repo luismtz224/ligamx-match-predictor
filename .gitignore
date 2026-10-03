@@ -218,3 +218,6 @@ __marimo__/
 .streamlit/secrets.toml
 
 datos/procesados/
+
+# escudos en alta resolución (las versiones ligeras están en assets/escudos/)
+assets/escudos_originales/

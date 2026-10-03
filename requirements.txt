@@ -1,5 +1,9 @@
+# Solo lo que necesita la app. Python 3.12 o superior (verificado en 3.12, 3.13 y 3.14):
+# numpy 2.5 y pandas 3 no publican wheels para 3.11 o menores.
 streamlit==1.64.0
 pandas==3.0.6
 numpy==2.5.3
 scikit-learn==1.9.1
 joblib==1.6.0
+altair==6.3.0
+pillow==12.3.0
