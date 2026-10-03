@@ -1,5 +1,6 @@
 """Ficha de equipos y rivalidades. `python -m src.equipos` regenera datos/equipos.csv."""
 import csv
+import re
 import unicodedata
 from pathlib import Path
 
@@ -107,6 +108,13 @@ def rivalidades_de(equipo, rivalidades):
         elif r.equipo_b == equipo:
             out.append((r.equipo_a, r.nombre))
     return out
+
+
+def fundacion_posterior(fundacion, primera_temporada):
+    """True si el año de fundación (primer número de 4 cifras) es mayor que el año con que
+    empieza la primera temporada del equipo en el CSV ('2012/2013' -> 2012)."""
+    m = re.search(r"\b(\d{4})\b", fundacion or "")
+    return bool(m) and int(m.group(1)) > int(primera_temporada.split("/")[0])
 
 
 def main():

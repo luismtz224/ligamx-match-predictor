@@ -85,10 +85,79 @@ def h2h(feat, equipo, rival, n=5):
 
 
 def rivales(pe, min_duelos=6):
-    """Puntos por partido contra cada rival con al menos `min_duelos` duelos, mejor primero."""
-    g = pe.groupby("rival").agg(n=("puntos", "size"), ppp=("puntos", "mean"))
+    """Puntos por partido contra cada rival con al menos `min_duelos` duelos, mejor primero.
+    Columnas: n (duelos), ppp (puntos por partido), g, e, p."""
+    g = pe.groupby("rival").agg(
+        n=("puntos", "size"), ppp=("puntos", "mean"),
+        g=("resultado", lambda s: int((s == "V").sum())),
+        e=("resultado", lambda s: int((s == "E").sum())),
+        p=("resultado", lambda s: int((s == "D").sum())))
     g = g[g["n"] >= min_duelos]
     return g.sort_values(["ppp", "n"], ascending=[False, False])
+
+
+def mejores_peores(riv, max_k=3):
+    """(mejores, peores) de la tabla de `rivales`, sin que las listas se solapen.
+
+    Con n rivales calificados, k = min(max_k, n // 2). Con n = 1 el único rival va en
+    `mejores` y `peores` queda vacío; con n = 0 ambos quedan vacíos. `peores` empieza por
+    el peor (menos puntos por partido y, a igualdad, más duelos).
+    """
+    n = len(riv)
+    k = min(max_k, n // 2)
+    mejores = riv.head(1 if n == 1 else k)
+    peores = riv.iloc[n - k:].sort_values(["ppp", "n"], ascending=[True, False]) if k else riv.iloc[0:0]
+    return mejores, peores
+
+
+def clasico(feat, equipo, rival):
+    """Duelos de `equipo` contra `rival` desde 2012: dict con n, g, e, p (óptica de
+    `equipo`) y `ultimo` (dict con fecha, local, gf, gc; None si no hubo duelos)."""
+    duelos = partidos_equipo(feat, equipo)
+    duelos = duelos[duelos["rival"] == rival]
+    g, e, p = gep(duelos)
+    ultimo = None
+    if len(duelos):
+        u = duelos.iloc[-1]
+        ultimo = dict(fecha=u["fecha"], local=bool(u["local"]), gf=int(u["gf"]), gc=int(u["gc"]))
+    return dict(n=len(duelos), g=g, e=e, p=p, ultimo=ultimo)
+
+
+def temporadas(pe):
+    """Temporadas que jugó el equipo, de la más vieja a la más reciente."""
+    return list(dict.fromkeys(pe["temporada"]))
+
+
+DIAS_CORTE = 365  # más de un año sin jugar: el trazo de la gráfica se corta
+
+
+def serie_elo(pe):
+    """Puntos de la gráfica del Elo: DataFrame con fecha, elo y `tramo_nuevo`.
+
+    Un punto inicial con `elo_antes` del primer partido y, por partido, `elo_despues`.
+    Si pasan más de DIAS_CORTE días entre dos partidos, el siguiente tramo arranca con un
+    punto (`tramo_nuevo` = True) con el `elo_antes` de ese partido. Vacío si no hay partidos.
+    """
+    filas = []
+    previa = None
+    for t in pe.itertuples():
+        if previa is None or (t.fecha - previa).days > DIAS_CORTE:
+            filas.append((t.fecha, t.elo_antes, True))
+        filas.append((t.fecha, t.elo_despues, False))
+        previa = t.fecha
+    return pd.DataFrame(filas, columns=["fecha", "elo", "tramo_nuevo"])
+
+
+def extremos(serie):
+    """Máximo, mínimo, inicio y final de la serie: dict de (fecha, elo). None si está vacía.
+    En empates, el primer punto."""
+    if serie.empty:
+        return None
+    def par(i):
+        return serie["fecha"].iloc[i], float(serie["elo"].iloc[i])
+    pos = lambda idx: serie.index.get_loc(idx)
+    return dict(maximo=par(pos(serie["elo"].idxmax())), minimo=par(pos(serie["elo"].idxmin())),
+                inicio=par(0), final=par(len(serie) - 1))
 
 
 def ranking(elo, activos):

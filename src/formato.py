@@ -105,3 +105,32 @@ def con_signo(x, decimales=1):
     if float(t) == 0:
         return t
     return ("+" if x > 0 else "−") + t
+
+
+def mes_anio(fecha):
+    """'sep 2026'."""
+    return f"{MESES[fecha.month - 1]} {fecha.year}"
+
+
+def temporada_corta(temporada):
+    """'2025/2026' -> '2025/26'."""
+    ini, fin = temporada.split("/")
+    return f"{ini}/{fin[-2:]}"
+
+
+_RACHA = {"V": ("victoria", "victorias", "seguidas"), "E": ("empate", "empates", "seguidos"),
+          "D": ("derrota", "derrotas", "seguidas")}
+
+
+def texto_racha(resultado, n):
+    """'1 victoria', '3 victorias seguidas', '2 empates seguidos', '2 derrotas seguidas'."""
+    uno, varios, seg = _RACHA[resultado]
+    return f"1 {uno}" if n == 1 else f"{n} {varios} {seg}"
+
+
+def texto_ultimo_duelo(ultimo, nombre_equipo, nombre_rival):
+    """'11 abr 2026 · Local: Juárez · 2–1' desde el dict `ultimo` de `historial.clasico`
+    (el marcador va siempre local primero)."""
+    local = nombre_equipo if ultimo["local"] else nombre_rival
+    gl, gv = (ultimo["gf"], ultimo["gc"]) if ultimo["local"] else (ultimo["gc"], ultimo["gf"])
+    return f"{fecha_corta(ultimo['fecha'])} · Local: {local} · {gl}–{gv}"

@@ -1,9 +1,10 @@
 """HTML de los componentes de DISENO.md. Funciones puras (sin Streamlit) que devuelven una
 sola línea de HTML: sin sangría ni saltos de línea, porque Markdown convierte eso en código.
 Todo texto que viene de datos pasa por html.escape."""
+import re
 from html import escape
 
-from src.formato import con_signo
+from src.formato import con_signo, fecha_corta, mes_anio
 
 AVISO_ESCUDOS = ("Los escudos son propiedad de sus respectivos clubes y se usan con fines "
                  "ilustrativos, sin fines de lucro.")
@@ -86,11 +87,13 @@ def tarjeta_equipo(equipo, elo, escudo_html, seleccionada=False, nombre=None):
             f'<div class="lm-team__elo">Elo {elo:.0f}</div></div></div>')
 
 
-def fila_ranking(pos, equipo, elo, pct, escudo_html, href=None, seleccionada=False, nombre=None):
+def fila_ranking(pos, equipo, elo, pct, escudo_html, href=None, seleccionada=False, nombre=None,
+                 enlazada=False):
     """Fila del ranking. `pct` es el Elo normalizado (0-100) para la barra; `equipo` es la
     llave (da el color) y `nombre` el texto a mostrar.
-    Sin `href` no es clicable (clase is-static: sin efecto hover)."""
-    clase = "lm-elo" + (" is-sel" if seleccionada else "") + ("" if href else " is-static")
+    Sin `href` no es clicable (clase is-static: sin efecto hover), salvo `enlazada=True`: la
+    fila va dentro de un contenedor con un `st.page_link` encima y conserva el hover."""
+    clase = "lm-elo" + (" is-sel" if seleccionada else "") + ("" if href or enlazada else " is-static")
     cuerpo = (f'<span class="lm-elo__n">{int(pos)}</span>{escudo_html}'
               f'<span style="font-weight:600">{escape(nombre or equipo)}</span>'
               f'<span class="lm-elo__v">{elo:.0f}</span>'
@@ -247,3 +250,133 @@ def modelo_vs_mercado(filas):
         out.append(f'<div class="lm-odds__r"><span>{escape(etiqueta)}</span><span>{100 * pm:.1f}%</span>'
                    f'<span>{100 * pk:.1f}%</span><span class="lm-odds__d{cls}">{con_signo(d)} pp</span></div>')
     return f'<div class="lm-odds">{h}{"".join(out)}</div>'
+
+
+# ===== Equipos =====
+def _hex(color):
+    """El color solo si es #RRGGBB (va dentro de un atributo style)."""
+    return color if re.fullmatch(r"#[0-9A-Fa-f]{6}", color or "") else None
+
+
+def heroe(equipo, nombre, escudo_html):
+    """Escudo grande con el nombre mostrado y borde del color del equipo."""
+    return (f'<div class="lm-hero" style="--team:{color_equipo(equipo)}">{escudo_html}'
+            f'<h1 class="lm-h1">{escape(nombre)}</h1></div>')
+
+
+def ficha(f):
+    """Ficha del equipo (fila de equipos.csv). Los campos vacíos se omiten."""
+    campos = (("Siglas", f["siglas"]), ("Apodo", f["apodo"]), ("Ciudad", f["ciudad_estado"]),
+              ("Estadio", f["estadio"]), ("Fundación", f["fundacion"]), ("Palmarés", f["palmares"]))
+    filas = "".join(f'<div><dt>{escape(k)}</dt><dd>{escape(v)}</dd></div>' for k, v in campos if v)
+    muestras = "".join(
+        f'<span class="lm-swatch"><i style="background:{h}"></i>{escape(h)}</span>'
+        for h in (_hex(f[k]) for k in ("color1", "color2", "color3")) if h)
+    if muestras:
+        filas += f'<div><dt>Colores</dt><dd class="lm-swatches">{muestras}</dd></div>'
+    return f'<div class="lm-record"><dl class="lm-facts">{filas}</dl></div>'
+
+
+def elo_actual(equipo, elo, activo, posicion=None, n_activos=None):
+    """Cifra grande del Elo. Equipos sin partidos en la temporada actual: «Elo final»."""
+    etiqueta = "Elo actual" if activo else "Elo final"
+    pos = (f'<p class="lm-muted" style="margin:0">Posición {int(posicion)} de {int(n_activos)} activos</p>'
+           if activo and posicion else "")
+    return (f'<div class="lm-eloact"><div class="lm-caption">{etiqueta}</div>'
+            f'<div class="lm-eloact__n" style="color:{color_equipo(equipo)}">{elo:,.0f}</div>{pos}</div>')
+
+
+def resumen_elo(nombre, ext):
+    """Texto de la gráfica (aria-label): inicio, final, máximo y mínimo con fechas."""
+    (f0, e0), (f1, e1) = ext["inicio"], ext["final"]
+    (fx, ex), (fn, en) = ext["maximo"], ext["minimo"]
+    return (f"Elo de {nombre}: de {e0:,.0f} en {mes_anio(f0)} a {e1:,.0f} en {mes_anio(f1)}; "
+            f"máximo {ex:,.0f} ({fecha_corta(fx)}); mínimo {en:,.0f} ({fecha_corta(fn)})")
+
+
+def grafica_elo(equipo, nombre, geo, ext, etiqueta_final="Hoy"):
+    """Gráfica del Elo a partir de `src.grafica.geometria` y `historial.extremos`.
+    Sin geometría (sin partidos en el filtro): aviso. El resumen visible repite el aria-label."""
+    if geo is None:
+        return aviso("Sin partidos en esta temporada.", suave=True)
+    marcas = "".join(f'<circle class="pt" cx="{p["x"]}" cy="{p["y"]}" r="5"></circle>'
+                     for p in geo["puntos"])
+    svg = (f'<svg class="lm-spark" style="--team:{color_equipo(equipo)}" viewBox="0 0 600 220" '
+           f'role="img" aria-label="{escape(resumen_elo(nombre, ext))}">'
+           f'<path class="gr" d="{geo["rejilla"]}"></path><path class="ar" d="{geo["area"]}"></path>'
+           f'<path class="ln" pathLength="1" d="{geo["linea"]}"></path>{marcas}</svg>')
+    items = (("Máximo", ext["maximo"]), ("Mínimo", ext["minimo"]), ("Inicio", ext["inicio"]),
+             (etiqueta_final, ext["final"]))
+    resumen = "".join(f'<div><dt>{escape(t)}</dt><dd>{e:,.0f}<small>{escape(fecha_corta(f))}</small></dd></div>'
+                      for t, (f, e) in items)
+    nota = ('<p class="lm-muted" style="margin:8px 0 0;font-size:14px">El trazo se corta donde el '
+            'equipo no jugó (más de un año).</p>' if geo["cortes"] else "")
+    return f'<div class="lm-chart">{svg}<dl class="lm-chartsum">{resumen}</dl>{nota}</div>'
+
+
+def _num(x):
+    return f"{x:.2f}" if x == x else "—"  # NaN (PJ = 0) -> raya
+
+
+def record_equipo(rec):
+    """Récord de local y de visitante (tabla de `historial.record`) en dos tarjetas."""
+    tarjetas = []
+    for lado, titulo_ in (("Local", "De local"), ("Visitante", "De visitante")):
+        f = rec.loc[lado]
+        dl = "".join(f'<dt>{escape(k)}</dt><dd>{escape(v)}</dd>' for k, v in (
+            ("Partidos", str(int(f["PJ"]))), ("Ganados", str(int(f["G"]))),
+            ("Empatados", str(int(f["E"]))), ("Perdidos", str(int(f["P"]))),
+            ("GF/partido", _num(f["GF_pp"])), ("GC/partido", _num(f["GC_pp"]))))
+        tarjetas.append(f'<div class="lm-record"><div class="lm-caption">{titulo_}</div><dl>{dl}</dl></div>')
+    return (f'<div class="lm-twocol keep">{"".join(tarjetas)}</div>'
+            '<p class="lm-muted" style="margin:8px 0 0;font-size:12px;line-height:16px">GF y GC: '
+            'goles a favor y en contra por partido.</p>')
+
+
+def racha_actual(rotulo, texto):
+    return (f'<div class="lm-record" style="margin-bottom:16px"><div class="lm-caption">{escape(rotulo)}</div>'
+            f'<div style="font-size:24px;line-height:32px;font-weight:600">{escape(texto)}</div></div>')
+
+
+def _lista_rivales(titulo_, filas, vacio):
+    if filas:
+        cuerpo = "".join(
+            f'<div class="lm-duel"><div class="lm-row" style="gap:8px">{f["escudo_html"]}<div>'
+            f'{escape(f["nombre"])}<small>{f["ppp"]:.2f} pts/partido · {int(f["n"])} duelos · '
+            f'{int(f["g"])}-{int(f["e"])}-{int(f["p"])}</small></div></div></div>' for f in filas)
+    else:
+        cuerpo = f'<p class="lm-muted" style="margin:0;font-size:14px">{escape(vacio)}</p>'
+    return f'<div class="lm-record"><div class="lm-caption">{escape(titulo_)}</div>{cuerpo}</div>'
+
+
+def rivales(mejores, peores):
+    """«Le gana más» y «Le gana menos». Cada fila: dict con escudo_html, nombre, ppp, n, g, e, p.
+    G-E-P desde la óptica del equipo. Si ambas listas están vacías, un solo aviso."""
+    if not mejores and not peores:
+        return aviso("Sin suficientes duelos (se piden al menos 6 por rival).", suave=True)
+    return (f'<div class="lm-twocol">{_lista_rivales("Le gana más", mejores, "Sin suficientes duelos")}'
+            f'{_lista_rivales("Le gana menos", peores, "Sin suficientes duelos")}</div>')
+
+
+POCOS_DUELOS = 6
+
+
+def clasicos(lista):
+    """Clásicos del equipo. Cada uno: dict con nombre, escudo_html, rival (nombre mostrado), n,
+    g, e, p y ultimo (texto o None). El número de duelos va siempre; con pocos, una nota."""
+    if not lista:
+        return aviso("Sin clásicos registrados.", suave=True)
+    out = []
+    for k in lista:
+        n = int(k["n"])
+        texto_n = "1 duelo desde 2012" if n == 1 else f"{n} duelos desde 2012"
+        nota = ('<p class="lm-muted" style="margin:8px 0 0;font-size:14px">Pocos duelos: ojo con '
+                'sacar conclusiones.</p>' if n < POCOS_DUELOS else "")
+        ultimo = (f'<div class="lm-duel"><div>Último duelo<small>{escape(k["ultimo"])}</small></div></div>'
+                  if k["ultimo"] else "")
+        out.append(
+            f'<div class="lm-record"><div class="lm-caption">{escape(k["nombre"])}</div>'
+            f'<div class="lm-row" style="gap:8px">{k["escudo_html"]}<div><b>{escape(k["rival"])}</b>'
+            f'<div class="lm-muted" style="font-size:14px">{texto_n} · G-E-P {int(k["g"])}-{int(k["e"])}-{int(k["p"])}'
+            f'</div></div></div>{ultimo}{nota}</div>')
+    return f'<div class="lm-twocol">{"".join(out)}</div>'

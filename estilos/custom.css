@@ -169,7 +169,8 @@
 .lm-odds { background: var(--surface); border: 1px solid var(--line); border-radius: var(--lm-r-card); padding: 16px; }
 .lm-odds__r { display: grid; grid-template-columns: 1fr 64px 72px 72px; gap: 8px; align-items: center; min-height: 48px; font-size: 14px; line-height: 24px; font-variant-numeric: tabular-nums; }
 .lm-odds__r + .lm-odds__r { border-top: 1px solid var(--line); }
-.lm-odds__r.h { min-height: 24px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ink-muted); letter-spacing: .08em; text-transform: uppercase; }
+.lm-odds__r.h { min-height: 24px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ink-muted); letter-spacing: .04em; text-transform: uppercase; }
+.lm-odds__r.h span { white-space: nowrap; }
 .lm-odds__r.h + .lm-odds__r { border-top: 0; }
 .lm-odds__r > :nth-child(n+2) { text-align: right; }
 .lm-odds__d { font-weight: 600; }
@@ -274,7 +275,8 @@ html, body, .stApp, [data-testid="stAppViewContainer"] { background: var(--bg) !
 .stApp::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 480px; background: var(--lm-hero); pointer-events: none; z-index: 0; }
 .stApp::after { content: ""; position: fixed; right: 0; bottom: 0; width: 480px; height: 480px; background: var(--lm-glow); pointer-events: none; z-index: 0; }
 [data-testid="stHeader"] { background: transparent !important; }
-[data-testid="stToolbar"], [data-testid="stDecoration"], footer { display: none !important; }
+[data-testid="stDecoration"], footer { display: none !important; }
+[data-testid="stExpandSidebarButton"] { min-width: 48px; min-height: 48px; }
 [data-testid="stMainBlockContainer"] { padding: 40px 16px 80px; max-width: 1104px; position: relative; z-index: 1; }
 @media (min-width: 992px) { [data-testid="stMainBlockContainer"] { padding: 64px 64px 96px; } }
 [data-testid="stSidebar"] { background: var(--surface) !important; border-right: 1px solid var(--line); }
@@ -314,3 +316,40 @@ h1, h2, h3 { font-family: var(--font-sans) !important; letter-spacing: -.02em; c
 .lm-detail__hint::after { content: " ▾"; }
 .lm-detail[open] .lm-detail__hint::after { content: " ▴"; }
 .lm-detail .lm-record { margin-top: 16px; }
+
+/* ===== Equipos (Fase 5) ===== */
+.lm-hero { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 24px; background: var(--surface); border: 2px solid var(--team, var(--line-strong)); border-radius: var(--lm-r-card); margin-bottom: 16px; text-align: center; }
+.lm-hero .lm-h1 { margin: 0; font-size: 36px; line-height: 40px; }
+@media (min-width: 700px) { .lm-hero { flex-direction: row; gap: 32px; text-align: left; } .lm-hero .lm-h1 { font-size: 56px; line-height: 56px; } }
+.lm-swatches { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 16px; }
+.lm-swatch { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.lm-swatch i { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--line-strong); flex: none; }
+.lm-eloact { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
+.lm-eloact__n { font-size: 64px; line-height: 64px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.lm-spark .pt { fill: var(--team, var(--accent)); stroke: var(--bg); stroke-width: 2; }
+.lm-chart { background: var(--surface); border: 1px solid var(--line); border-radius: var(--lm-r-card); padding: 16px; margin-top: 16px; }
+.lm-chartsum { margin: 16px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+@media (min-width: 700px) { .lm-chartsum { grid-template-columns: repeat(4, 1fr); } }
+.lm-chartsum dt { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-muted); }
+.lm-chartsum dd { margin: 0; font-size: 20px; line-height: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lm-chartsum small { display: block; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--ink-muted); }
+.lm-twocol { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 700px) { .lm-twocol { grid-template-columns: 1fr 1fr; } }
+.lm-twocol.keep { grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (min-width: 700px) { .lm-twocol.keep { gap: 16px; } }
+.lm-record .lm-duel:first-of-type { border-top: 0; }
+/* enlaces: page_link transparente sobre la tarjeta o la fila (navegación sin recarga) */
+[class*="st-key-fila-"], [class*="st-key-tarjeta-"] { position: relative; gap: 0; }
+[class*="st-key-fila-"] a, [class*="st-key-tarjeta-"] a { position: absolute; inset: 0; opacity: 0; z-index: 2; }
+[class*="st-key-fila-"]:hover .lm-elo, [class*="st-key-fila-"]:focus-within .lm-elo { background: var(--surface-raised); transform: translateX(8px); }
+[class*="st-key-tarjeta-"]:hover .lm-team { transform: translateY(-4px); border-color: var(--team); }
+[class*="st-key-fila-"]:focus-within, [class*="st-key-tarjeta-"]:focus-within { border-radius: var(--lm-r-card); box-shadow: var(--shadow-focus); }
+.st-key-ranking { gap: 0; }
+.st-key-rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+.lm-record dl.lm-facts { grid-template-columns: 1fr; }
+.lm-facts > div:first-child { border-top: 0; }
+/* con movimiento reducido no hay animación: la línea de la gráfica debe quedar dibujada */
+@media (prefers-reduced-motion: reduce) { .lm-spark .ln { stroke-dashoffset: 0 !important; stroke-dasharray: none !important; } }
+/* Streamlit resta 16 px al contenedor de markdown: dentro de tarjetas y filas con enlace se anula */
+[class*="st-key-fila-"] [data-testid="stMarkdownContainer"], [class*="st-key-tarjeta-"] [data-testid="stMarkdownContainer"] { margin-bottom: 0; }
+.lm-detail summary { flex-wrap: wrap; }

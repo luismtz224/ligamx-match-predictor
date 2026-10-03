@@ -119,3 +119,24 @@ def test_orden_el_acento_no_cambia_la_posicion():
                           index=["k1", "k2", "k3", "k4"])
     assert ordenar_por_nombre(fichas.index, fichas) == ["k2", "k1", "k3", "k4"]  # Áa, Ab, aC, Zeta
     assert ordenar_por_nombre(["k4", "k1"], fichas) == ["k1", "k4"]
+
+
+def test_fundacion_posterior_a_la_primera_temporada():
+    from src.equipos import fundacion_posterior
+    assert fundacion_posterior("28 de Mayo de 2013", "2012/2013")  # Atl. San Luis
+    assert not fundacion_posterior("12 de octubre de 1916", "2012/2013")
+    assert not fundacion_posterior("2 de junio de 2012", "2012/2013")  # el mismo año: no se avisa
+    assert not fundacion_posterior("", "2012/2013") and not fundacion_posterior("sin fecha", "2012/2013")
+    assert fundacion_posterior("8 de agosto de 2003 en Culiacán, Sinaloa", "1990/1991")
+
+
+def test_solo_atl_san_luis_empieza_antes_de_su_fundacion():
+    from src.equipos import cargar_equipos, fundacion_posterior
+    feat = cargar_partidos(RUTA_CSV)
+    fichas = cargar_equipos()
+    marcados = []
+    for equipo in fichas.index:
+        m = feat[(feat["Home"] == equipo) | (feat["Away"] == equipo)]
+        if fundacion_posterior(fichas.loc[equipo, "fundacion"], sorted(m["Season"].unique())[0]):
+            marcados.append(equipo)
+    assert marcados == ["Atl. San Luis"]

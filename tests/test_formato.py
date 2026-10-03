@@ -49,3 +49,30 @@ def test_color_acento_contrasta_con_fondo():
     assert color_acento(["#00C26F"]) == "#00C26F"
     for c in itertools.product(["#111231", "#0A2240"], ["#5A0000", "#222222"]):
         assert contraste(color_acento(list(c)), FONDO) == max(contraste(x, FONDO) for x in c)
+
+
+# ===== Fase 5 =====
+def test_texto_racha_singular_y_plural():
+    from src.formato import texto_racha
+    assert texto_racha("V", 1) == "1 victoria" and texto_racha("E", 1) == "1 empate"
+    assert texto_racha("D", 1) == "1 derrota"
+    assert texto_racha("V", 3) == "3 victorias seguidas"
+    assert texto_racha("E", 2) == "2 empates seguidos"
+    assert texto_racha("D", 2) == "2 derrotas seguidas"
+
+
+def test_temporada_corta_y_mes_anio():
+    import pandas as pd
+    from src.formato import mes_anio, temporada_corta
+    assert temporada_corta("2025/2026") == "2025/26" and temporada_corta("2012/2013") == "2012/13"
+    assert mes_anio(pd.Timestamp("2026-09-27")) == "sep 2026"
+
+
+def test_texto_ultimo_duelo_pone_el_marcador_local_primero():
+    import pandas as pd
+    from src.formato import texto_ultimo_duelo
+    f = pd.Timestamp("2026-04-11")
+    local = dict(fecha=f, local=True, gf=2, gc=1)
+    visita = dict(fecha=f, local=False, gf=2, gc=1)
+    assert texto_ultimo_duelo(local, "Juárez", "Tijuana") == "11 abr 2026 · Local: Juárez · 2–1"
+    assert texto_ultimo_duelo(visita, "Juárez", "Tijuana") == "11 abr 2026 · Local: Tijuana · 1–2"

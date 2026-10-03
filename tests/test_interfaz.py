@@ -214,3 +214,162 @@ def test_colores_partido_nunca_chocan():
         assert delta_e(hl, hv) >= UMBRAL_PARECIDOS, (local, visita)
         assert delta_e(hv, v["draw"]) >= UMBRAL_PARECIDOS, (local, visita)
         assert delta_e(hl, v["draw"]) >= UMBRAL_PARECIDOS, (local, visita)
+
+
+# ===== Fase 5: componentes de Equipos =====
+import pandas as pd  # noqa: E402
+
+from src.equipos import cargar_equipos as _cargar_equipos  # noqa: E402
+
+
+def _ficha_peligrosa():
+    f = {k: PELIGRO for k in ("siglas", "apodo", "ciudad_estado", "estadio", "fundacion", "palmares")}
+    f.update(color1="#112233", color2="#445566", color3="")
+    return f
+
+
+def _geo_ext():
+    from src.grafica import geometria
+    from src.historial import extremos
+    s = pd.DataFrame({"fecha": pd.to_datetime(["2020-01-01", "2020-02-01", "2023-01-01", "2023-02-01"]),
+                      "elo": [1500.0, 1520.0, 1520.0, 1480.0], "tramo_nuevo": [True, False, True, False]})
+    return geometria(s), extremos(s)
+
+
+def _rec(pj=10):
+    nan = float("nan")
+    fila = dict(PJ=pj, G=4, E=3, P=3, GF_pp=1.5 if pj else nan, GC_pp=1.0 if pj else nan)
+    return pd.DataFrame({"Local": fila, "Visitante": fila}).T
+
+
+def _fila_rival(nombre):
+    return dict(escudo_html='<span class="lm-crest"></span>', nombre=nombre, ppp=2.1, n=20, g=9, e=3, p=8)
+
+
+def _clasico(n=30, nombre=PELIGRO, ultimo=PELIGRO):
+    return dict(nombre=nombre, escudo_html='<span class="lm-crest"></span>', rival=PELIGRO, n=n,
+                g=1, e=2, p=3, ultimo=ultimo)
+
+
+def _componentes_equipos():
+    geo, ext = _geo_ext()
+    return [
+        c.heroe("Toluca", PELIGRO, ""),
+        c.ficha(_ficha_peligrosa()),
+        c.elo_actual("Toluca", 1643.6, True, 2, 18), c.elo_actual("Chiapas", 1417.0, False),
+        c.grafica_elo("Toluca", PELIGRO, geo, ext), c.grafica_elo("Toluca", PELIGRO, None, None),
+        c.record_equipo(_rec()), c.record_equipo(_rec(0)),
+        c.racha_actual(PELIGRO, PELIGRO),
+        c.rivales([_fila_rival(PELIGRO)], [_fila_rival(PELIGRO)]), c.rivales([], []),
+        c.rivales([_fila_rival("A")], []),
+        c.clasicos([_clasico(), _clasico(1), _clasico(5)]), c.clasicos([]),
+        c.clasicos([_clasico(ultimo=None)]),
+    ]
+
+
+def test_componentes_equipos_una_linea():
+    for h in _componentes_equipos():
+        _sin_sangria(h)
+
+
+def test_componentes_equipos_escapan_texto_de_datos():
+    for h in _componentes_equipos():
+        assert PELIGRO not in h  # el texto crudo nunca llega al HTML
+    assert escape(PELIGRO) in c.heroe("Toluca", PELIGRO, "")
+    ficha = c.ficha(_ficha_peligrosa())
+    assert ficha.count(escape(PELIGRO)) == 6  # los 6 campos de texto, cada uno escapado
+    geo, ext = _geo_ext()
+    assert escape(PELIGRO) in c.grafica_elo("Toluca", PELIGRO, geo, ext)  # aria-label
+    assert escape(PELIGRO) in c.racha_actual(PELIGRO, PELIGRO)
+    assert c.rivales([_fila_rival(PELIGRO)], []).count(escape(PELIGRO)) == 1
+    k = c.clasicos([_clasico()])
+    assert k.count(escape(PELIGRO)) == 3  # nombre del clásico, rival y último duelo
+
+
+def test_ficha_estadio_con_comillas_de_veracruz_y_campos_vacios():
+    fichas = _cargar_equipos()
+    f = fichas.loc["Veracruz"]
+    h = c.ficha(f)
+    assert escape(f["estadio"]) in h
+    if '"' in f["estadio"]:
+        assert f["estadio"] not in h  # las comillas van escapadas
+    assert "<dt>Apodo</dt>" in c.ficha(dict(f, apodo="Los Tiburones"))
+    assert "Apodo" not in c.ficha(dict(f, apodo=""))  # sin apodo se omite la línea
+
+
+def test_ficha_solo_acepta_colores_hex_y_muestra_el_hex():
+    f = _ficha_peligrosa()
+    f.update(color1="#112233", color2="red;position:fixed", color3="#GGGGGG")
+    h = c.ficha(f)
+    assert 'style="background:#112233"></i>#112233</span>' in h  # muestra con su hex visible
+    assert "position:fixed" not in h and "GGGGGG" not in h
+
+
+def test_elo_actual_etiqueta_y_posicion():
+    activo = c.elo_actual("Toluca", 1643.6, True, 2, 18)
+    assert "Elo actual" in activo and ">1,644<" in activo and "Posición 2 de 18 activos" in activo
+    assert "--team-toluca" in activo
+    inactivo = c.elo_actual("Chiapas", 1417.2, False, None, 18)
+    assert "Elo final" in inactivo and "Elo actual" not in inactivo and "Posición" not in inactivo
+
+
+def test_grafica_resumen_visible_aria_y_nota_de_cortes():
+    geo, ext = _geo_ext()
+    h = c.grafica_elo("Atl. San Luis", "Atlético de San Luis", geo, ext)
+    assert 'viewBox="0 0 600 220"' in h and 'role="img"' in h and "lm-spark" in h
+    assert "--team:var(--team-san-luis)" in h and 'pathLength="1"' in h
+    assert 'aria-label="Elo de Atlético de San Luis: de 1,500 en ene 2020 a 1,480 en feb 2023;' in h
+    assert "máximo 1,520 (1 feb 2020)" in h and "mínimo 1,480 (1 feb 2023)" in h
+    for t in ("Máximo", "Mínimo", "Inicio", "Hoy"):
+        assert f"<dt>{t}</dt>" in h
+    assert h.count('<circle class="pt"') == 2  # el mínimo es también el último punto
+    assert "El trazo se corta donde el equipo no jugó (más de un año)." in h
+    assert "<dt>Final</dt>" in c.grafica_elo("X", "X", geo, ext, etiqueta_final="Final")
+    # sin cortes no hay nota
+    from src.grafica import geometria
+    from src.historial import extremos
+    s = pd.DataFrame({"fecha": pd.to_datetime(["2020-01-01", "2020-02-01"]), "elo": [1500.0, 1510.0],
+                      "tramo_nuevo": [True, False]})
+    assert "El trazo se corta" not in c.grafica_elo("X", "X", geometria(s), extremos(s))
+    assert "Sin partidos en esta temporada" in c.grafica_elo("X", "X", None, None)
+
+
+def test_record_equipo_raya_cuando_no_hay_partidos():
+    con = c.record_equipo(_rec(10))
+    assert "De local" in con and "De visitante" in con and "1.50" in con and "—" not in con
+    sin = c.record_equipo(_rec(0))
+    assert sin.count("—") == 4 and "nan" not in sin.lower()  # GF y GC, de local y de visitante
+
+
+def test_rivales_listas_y_avisos():
+    ambos = c.rivales([_fila_rival("A")], [_fila_rival("B")])
+    assert "Le gana más" in ambos and "Le gana menos" in ambos
+    assert "2.10 pts/partido · 20 duelos · 9-3-8" in ambos and 'alt=' not in ambos
+    solo_mejores = c.rivales([_fila_rival("A")], [])
+    assert "Le gana más" in solo_mejores and "Sin suficientes duelos" in solo_mejores
+    vacio = c.rivales([], [])
+    assert "Sin suficientes duelos" in vacio and "Le gana más" not in vacio
+
+
+def test_clasicos_numero_de_duelos_y_nota_de_pocos():
+    uno = c.clasicos([_clasico(1, "Clásico X", "11 abr 2026 · Local: A · 2–1")])
+    assert "1 duelo desde 2012" in uno and "Pocos duelos: ojo con sacar conclusiones." in uno
+    assert "G-E-P 1-2-3" in uno and "11 abr 2026 · Local: A · 2–1" in uno
+    assert "Pocos duelos" in c.clasicos([_clasico(5)]) and "5 duelos desde 2012" in c.clasicos([_clasico(5)])
+    seis = c.clasicos([_clasico(6)])
+    assert "6 duelos desde 2012" in seis and "Pocos duelos" not in seis
+    assert "Sin clásicos registrados." in c.clasicos([])
+    assert "Último duelo" not in c.clasicos([_clasico(ultimo=None)])
+
+
+def test_fila_ranking_enlazada_conserva_el_hover():
+    h = c.fila_ranking(1, "Toluca", 1643.6, 80, "", enlazada=True)
+    assert 'class="lm-elo"' in h and "is-static" not in h and h.startswith("<div")
+
+
+def test_equipo_de_slug_es_el_inverso_de_slug():
+    from interfaz.recursos import equipo_de_slug
+    for equipo, slug in c.SLUG.items():
+        assert equipo_de_slug(slug) == equipo
+    for malo in ("xyz", "", None, "Toluca", ["toluca"], 3):
+        assert equipo_de_slug(malo) is None

@@ -7,7 +7,8 @@ import joblib
 import streamlit as st
 
 from interfaz import componentes
-from src.equipos import cargar_equipos, nombre_mostrado, ordenar_por_nombre
+from src.equipos import (cargar_equipos, cargar_rivalidades, nombre_mostrado,
+                         ordenar_por_nombre)
 from src.features import cargar_partidos, procesar
 from src.formato import color_distinto
 
@@ -65,6 +66,20 @@ def colores_partido(local, visita):
 def equipos():
     """Ficha de los 25 equipos (datos/equipos.csv), indexada por nombre. Solo lectura."""
     return cargar_equipos()
+
+
+@st.cache_resource
+def rivalidades():
+    """Clásicos (datos/rivalidades.csv). Solo lectura."""
+    return cargar_rivalidades()
+
+
+_DE_SLUG = {v: k for k, v in componentes.SLUG.items()}
+
+
+def equipo_de_slug(slug):
+    """Llave del equipo (nombre de MEX.csv) para un slug de la URL; None si no existe."""
+    return _DE_SLUG.get(slug) if isinstance(slug, str) else None
 
 
 @st.cache_data
