@@ -167,7 +167,7 @@
 
 /* Modelo vs mercado */
 .lm-odds { background: var(--surface); border: 1px solid var(--line); border-radius: var(--lm-r-card); padding: 16px; }
-.lm-odds__r { display: grid; grid-template-columns: 1fr 56px 56px 72px; gap: 8px; align-items: center; min-height: 48px; font-size: 14px; line-height: 24px; font-variant-numeric: tabular-nums; }
+.lm-odds__r { display: grid; grid-template-columns: 1fr 64px 72px 72px; gap: 8px; align-items: center; min-height: 48px; font-size: 14px; line-height: 24px; font-variant-numeric: tabular-nums; }
 .lm-odds__r + .lm-odds__r { border-top: 1px solid var(--line); }
 .lm-odds__r.h { min-height: 24px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ink-muted); letter-spacing: .08em; text-transform: uppercase; }
 .lm-odds__r.h + .lm-odds__r { border-top: 0; }
