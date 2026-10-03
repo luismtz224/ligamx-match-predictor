@@ -3,6 +3,8 @@ sola línea de HTML: sin sangría ni saltos de línea, porque Markdown convierte
 Todo texto que viene de datos pasa por html.escape."""
 from html import escape
 
+from src.formato import con_signo
+
 AVISO_ESCUDOS = ("Los escudos son propiedad de sus respectivos clubes y se usan con fines "
                  "ilustrativos, sin fines de lucro.")
 AVISO_EDUCATIVO = "Proyecto educativo, no es recomendación de apuestas."
@@ -110,3 +112,138 @@ def lista_modelos(filas=RESULTADOS_MODELOS):
         out.append(f'<span {c1}>{escape(nombre)}</span>'.replace("<span >", "<span>")
                    + f'<span {c2}>{escape(ll)}</span><span {c2}>{escape(acc)}</span>')
     return f'<div class="lm-model">{h}{"".join(out)}</div>'
+
+
+# ===== Predictor =====
+_ICONO_EMPATE = ('<span style="width:40px;height:40px;display:flex;align-items:center;'
+                 'justify-content:center"><i style="width:24px;height:4px;border-radius:2px;'
+                 'background:var(--draw)"></i></span>')
+
+
+def elegido(escudo_html, nombre):
+    """Escudo y nombre del equipo elegido, junto al selector (no dentro de la opción)."""
+    return (f'<div class="lm-row" style="gap:8px;margin:8px 0 16px">{escudo_html}'
+            f'<span style="font-weight:600">{escape(nombre)}</span></div>')
+
+
+def tarjetas_probabilidad(pct, nombres, colores, escudos):
+    """Tres tarjetas Local | Empate | Visitante. `pct` son enteros que suman 100.
+
+    nombres, colores, escudos: (local, visitante). `is-top` va solo en la más probable
+    (si hay empate en el máximo, en la primera).
+    """
+    top = max(range(3), key=lambda i: pct[i])
+    datos = [("Local", colores[0], escudos[0], nombres[0]), ("Empate", None, _ICONO_EMPATE, ""),
+             ("Visitante", colores[1], escudos[1], nombres[1])]
+    out = []
+    for i, (tag, color, icono, nombre) in enumerate(datos):
+        clase = "lm-pcard is-top" if i == top else "lm-pcard"
+        estilo = (f"--team:{color};" if color else "") + f"animation-delay:{i * 80}ms"
+        v = int(pct[i])
+        out.append(f'<div class="{clase}" style="{estilo}"><div class="lm-pcard__tag">{tag}</div>'
+                   f'{icono}<div class="lm-pcard__name">{escape(nombre)}</div>'
+                   f'<div class="lm-pcard__pct"><span class="lm-pct" style="--v:{v}" '
+                   f'aria-label="{v} por ciento"></span></div></div>')
+    return f'<div class="lm-cards">{"".join(out)}</div>'
+
+
+def barra_apilada(probs, pct, colores):
+    """Barra con los valores sin redondear (`probs`, 0-1) y leyenda con los enteros (`pct`).
+    colores: (local, visitante); el empate usa --draw."""
+    cs = (colores[0], "var(--draw)", colores[1])
+    etiquetas = ("Local", "Empate", "Visitante")
+    total = sum(probs)
+    segs = "".join(f'<i style="--w:{100 * p / total:.1f};--c:{c}"></i>' for p, c in zip(probs, cs))
+    leyenda = "".join(f'<span style="--c:{c}">{t} <b>{v}%</b></span>'
+                      for t, v, c in zip(etiquetas, pct, cs))
+    aria = f"Local {pct[0]}%, empate {pct[1]}%, visitante {pct[2]}%"
+    return (f'<div class="lm-stackbar" role="img" aria-label="{aria}">{segs}</div>'
+            f'<div class="lm-legend">{leyenda}</div>')
+
+
+def forma(partidos, nombre, escudo_html, sm=False):
+    """Últimos partidos como círculos V/E/D, el más reciente a la derecha.
+
+    `partidos`: lista de dicts con resultado ('V'/'E'/'D'), fecha, rival, marcador y
+    condicion ('Local'/'Visita'), del más viejo al más reciente. El detalle va en <details>
+    (los tooltips no funcionan con el dedo); `title` queda para el mouse.
+    """
+    encabezado_ = (f'<div class="lm-row" style="gap:8px;margin-bottom:8px">{escudo_html}'
+                   f'<span style="font-weight:600">{escape(nombre)}</span></div>')
+    if not partidos:
+        return (f'<div class="lm-forma">{encabezado_}'
+                f'<p class="lm-muted" style="font-size:14px">Sin partidos registrados.</p></div>')
+    clase = "lm-form sm" if sm else "lm-form"
+    puntos, filas = [], []
+    for i, p in enumerate(partidos):
+        r = p["resultado"]
+        extra = " is-latest" if i == len(partidos) - 1 else ""
+        titulo_ = escape(f"{r} · vs {p['rival']} {p['marcador']} ({p['condicion'].lower()})")
+        puntos.append(f'<span class="lm-dot {r.lower()}{extra}" title="{titulo_}">{escape(r)}</span>')
+        filas.append(f'<div class="lm-duel"><div>{escape(p["fecha"])}<small>vs {escape(p["rival"])}'
+                     f' · {escape(p["condicion"])}</small></div><b>{escape(p["marcador"])}</b></div>')
+    filas.reverse()  # en el detalle, el más reciente arriba
+    return (f'<div class="lm-forma">{encabezado_}'
+            f'<details class="lm-detail"><summary><div class="{clase}">{"".join(puntos)}</div>'
+            f'<span class="lm-detail__hint">Ver partidos</span></summary>'
+            f'<div style="margin-top:8px">{"".join(filas)}</div></details></div>')
+
+
+def h2h(nombres, colores, gep_local, duelos):
+    """Historial entre los dos desde 2012. `gep_local`: (G, E, P) desde la óptica del local.
+    `duelos`: lista de (fecha, nombre del local, goles local, goles visita), el más reciente primero."""
+    g, e, p = gep_local
+    n = g + e + p
+    if n == 0:
+        return aviso("Sin duelos entre estos equipos desde 2012.", suave=True)
+    nums = (f'<div class="lm-h2h__nums"><div><b style="color:{colores[0]}">{g}</b>'
+            f'<span>Gana {escape(nombres[0])}</span></div><div><b style="color:var(--ink-muted)">{e}</b>'
+            f'<span>Empates</span></div><div><b style="color:{colores[1]}">{p}</b>'
+            f'<span>Gana {escape(nombres[1])}</span></div></div>')
+    texto_n = "1 duelo desde 2012" if n == 1 else f"{n} duelos desde 2012"
+    filas = "".join(f'<div class="lm-duel"><div>{escape(f)}<small>Local: {escape(loc)}</small></div>'
+                    f'<b>{int(gl)} – {int(gv)}</b></div>' for f, loc, gl, gv in duelos)
+    return (f'<div class="lm-h2h">{nums}<p class="lm-muted" style="margin:8px 0 16px;font-size:14px">'
+            f'{texto_n}</p>{filas}</div>')
+
+
+def factores(lista, colores):
+    """Barras de factor: centro neutro, visitante a la izquierda, local a la derecha.
+    `lista`: [(nombre, valor)] con valor > 0 = empuja a local. colores: (local, visitante).
+    `--p` se normaliza al factor de mayor magnitud."""
+    mayor = max((abs(v) for _, v in lista), default=0) or 1
+    out = []
+    for nombre, v in lista:
+        if v > 0:
+            lado, cls, c = "Local", "local", colores[0]
+        elif v < 0:
+            lado, cls, c = "Visitante", "visita", colores[1]
+        else:
+            lado, cls, c = "Neutro", "", ""
+        barra = (f'<i class="lm-factor__fill {cls}" style="--p:{abs(v) / mayor:.2f};--c:{c}"></i>'
+                 if cls else "")
+        out.append(f'<div class="lm-factor"><div class="lm-factor__head"><span>{escape(nombre)}</span>'
+                   f'<b>{abs(v):.2f} · {lado}</b></div><div class="lm-factor__track">{barra}</div></div>')
+    return (f'<div class="lm-stack" style="gap:16px">{"".join(out)}<div class="lm-factor__ends">'
+            f'<span>← Empuja a Visitante</span><span>Empuja a Local →</span></div></div>')
+
+
+def datos_modelo(nombres, filas):
+    """Lista (sin tabla) de los datos de entrada: [(etiqueta, valor local, valor visitante)]."""
+    dl = "".join(f'<dt>{escape(t)}</dt><dd>{escape(a)} · {escape(b)}</dd>' for t, a, b in filas)
+    return (f'<div class="lm-record"><div class="lm-caption">{escape(nombres[0])} · '
+            f'{escape(nombres[1])}</div><dl>{dl}</dl></div>')
+
+
+def modelo_vs_mercado(filas):
+    """`filas`: [(etiqueta, p_modelo, p_mercado)] con probabilidades 0-1. Un decimal; la
+    diferencia en puntos porcentuales con signo."""
+    h = ('<div class="lm-odds__r h"><span>Resultado</span><span>Modelo</span>'
+         '<span>Mercado</span><span>Dif.</span></div>')
+    out = []
+    for etiqueta, pm, pk in filas:
+        d = (pm - pk) * 100
+        cls = " up" if d > 0 else " down" if d < 0 else ""
+        out.append(f'<div class="lm-odds__r"><span>{escape(etiqueta)}</span><span>{100 * pm:.1f}%</span>'
+                   f'<span>{100 * pk:.1f}%</span><span class="lm-odds__d{cls}">{con_signo(d)} pp</span></div>')
+    return f'<div class="lm-odds">{h}{"".join(out)}</div>'

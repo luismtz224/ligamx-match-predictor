@@ -77,3 +77,31 @@ def color_acento(colores, fondo=FONDO, minimo=3.0):
         if c and contraste(c, fondo) >= minimo:
             return c
     return max((c for c in colores if c), key=lambda c: contraste(c, fondo))
+
+
+def color_distinto(c_local, c_empate, opciones, umbral=UMBRAL_PARECIDOS):
+    """Primera opción que se distingue del local y del empate (delta E >= umbral).
+
+    `opciones` es una lista ordenada de (clave, hex), por ejemplo su color, su -2 y un
+    respaldo neutro. Si ninguna pasa, devuelve la clave de la última.
+    """
+    for clave, c in opciones:
+        if c and delta_e(c, c_local) >= umbral and delta_e(c, c_empate) >= umbral:
+            return clave
+    return opciones[-1][0]
+
+
+MESES = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
+
+
+def fecha_corta(fecha):
+    """'13 sep 2026' (sin depender del idioma del sistema)."""
+    return f"{fecha.day} {MESES[fecha.month - 1]} {fecha.year}"
+
+
+def con_signo(x, decimales=1):
+    """'+2.2' o '−2.2' con signo menos tipográfico; el cero sin signo."""
+    t = f"{abs(x):.{decimales}f}"
+    if float(t) == 0:
+        return t
+    return ("+" if x > 0 else "−") + t

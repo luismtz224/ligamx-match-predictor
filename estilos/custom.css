@@ -305,3 +305,12 @@ h1, h2, h3 { font-family: var(--font-sans) !important; letter-spacing: -.02em; c
 .stApp *, .stApp *::before, .stApp *::after { box-sizing: border-box; }
 .stApp .lm-hero-bg, .stApp .lm-glow { display: none; }
 @media (prefers-reduced-motion: reduce) { .stApp *, .stApp *::before, .stApp *::after { animation: none !important; transition: none !important; } }
+/* Predictor: detalle desplegable (sustituye tooltips, que no funcionan con el dedo) */
+.lm-forma + .lm-forma { margin-top: 24px; }
+.lm-detail summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: var(--tap); border-radius: var(--lm-r-ctl); }
+.lm-detail summary::-webkit-details-marker { display: none; }
+.lm-detail summary:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.lm-detail__hint { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ink-muted); white-space: nowrap; }
+.lm-detail__hint::after { content: " ▾"; }
+.lm-detail[open] .lm-detail__hint::after { content: " ▴"; }
+.lm-detail .lm-record { margin-top: 16px; }
