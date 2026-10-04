@@ -150,8 +150,11 @@ def test_componentes_predictor_escapan_cada_campo():
 def test_tarjetas_un_solo_top_y_porcentajes():
     h = c.tarjetas_probabilidad([44, 29, 27], ("A", "B"), ("var(--a)", "var(--b)"), ("", ""))
     assert h.count("is-top") == 1 and h.index("is-top") < h.index("Empate")
-    assert re.findall(r"--v:(\d+)", h) == ["44", "29", "27"]
-    assert 'aria-label="44 por ciento"' in h
+    # el porcentaje es texto real en el HTML (lo lee un lector de pantalla), no un contador CSS
+    assert re.findall(r'<span class="lm-pct">(\d+)%</span>', h) == ["44", "29", "27"]
+    assert "--v:" not in h and 'class="lm-pct" style' not in h and "aria-label" not in h
+    cambiado = c.tarjetas_probabilidad([61, 23, 16], ("A", "B"), ("var(--a)", "var(--b)"), ("", ""))
+    assert re.findall(r'<span class="lm-pct">(\d+)%</span>', cambiado) == ["61", "23", "16"]
     empate = c.tarjetas_probabilidad([30, 40, 30], ("A", "B"), ("var(--a)", "var(--b)"), ("", ""))
     assert empate.count("is-top") == 1
     i = empate.index("is-top")
@@ -537,3 +540,31 @@ def test_la_cifra_clara_es_solo_para_la_cifra_grande_de_chiapas():
         assert "team-chiapas-claro" not in h
     assert "--team-chiapas)" in c.heroe("Chiapas", "Chiapas", "")
     assert CSS.count("team-chiapas-claro") == 2  # su definición y el comentario de la regla
+
+
+# ===== Clic real, padding superior y porcentaje como texto (pruebas estáticas; el clic real está en test_clic_real.py) =====
+def test_css_del_overlay_cubre_toda_la_tarjeta_y_no_se_selecciona_el_texto():
+    enlace = _regla('[class*="st-key-fila-"] a, [class*="st-key-tarjeta-"] a')
+    assert all(t in enlace for t in ("position: absolute", "inset: 0", "margin: 0", "opacity: 0"))
+    envoltura = _regla('[class*="st-key-fila-"] [data-testid="stElementContainer"], '
+                       '[class*="st-key-tarjeta-"] [data-testid="stElementContainer"]')
+    # el contenedor del page_link es relative y trae margin: -6px: sin esto el overlay mide 16 × 0 px
+    assert "position: static" in envoltura and "margin: 0" in envoltura
+    assert "position: relative" in _regla('[class*="st-key-fila-"], [class*="st-key-tarjeta-"]')
+    assert re.search(r'\[class\*="st-key-fila-"\], \[class\*="st-key-tarjeta-"\] \{ -webkit-user-select: none; user-select: none; \}', CSS)
+
+
+def test_padding_superior_libera_la_barra_fija_de_streamlit_sin_ocultar_nada():
+    """La barra de Streamlit (», Fork, GitHub, menú) es fija y mide ~60 px: a 390 px quedaba pegada al
+    primer selector. 64 px arriba en móvil y en escritorio, y ningún elemento de la barra se oculta."""
+    base = re.search(r'\[data-testid="stMainBlockContainer"\]\s*\{\s*padding:\s*(\d+)px', CSS)
+    escritorio = re.search(r'min-width: 992px\)\s*\{\s*\[data-testid="stMainBlockContainer"\]\s*\{\s*padding:\s*(\d+)px', CSS)
+    assert base and escritorio and int(base.group(1)) >= 64 and int(escritorio.group(1)) >= 64
+    assert "stToolbar" not in CSS and not re.search(r'stHeader"\][^}]*display:\s*none', CSS)
+    assert re.search(r'\[data-testid="stDecoration"\], footer \{ display: none !important; \}', CSS)  # lo único que se oculta
+
+
+def test_css_sin_contadores_ni_property_para_el_porcentaje():
+    """Los contadores CSS con @property (--lm-n) no se actualizaban en Safari: el número es texto real."""
+    assert "@property" not in CSS and "counter-reset" not in CSS and "counter(" not in CSS
+    assert "lm-count" not in CSS and "lm-pct::after" not in CSS

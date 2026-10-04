@@ -154,8 +154,7 @@ def tarjetas_probabilidad(pct, nombres, colores, escudos):
         v = int(pct[i])
         out.append(f'<div class="{clase}" style="{estilo}"><div class="lm-pcard__tag">{tag}</div>'
                    f'{icono}<div class="lm-pcard__name">{escape(nombre)}</div>'
-                   f'<div class="lm-pcard__pct"><span class="lm-pct" style="--v:{v}" '
-                   f'aria-label="{v} por ciento"></span></div></div>')
+                   f'<div class="lm-pcard__pct"><span class="lm-pct">{v}%</span></div></div>')
     return f'<div class="lm-cards">{"".join(out)}</div>'
 
 

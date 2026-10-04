@@ -102,8 +102,11 @@ def test_predictor_tres_pares(local, visita, color_v):
     assert [s.value for s in at.selectbox] == [local, visita]
     html = _html(at)
     probs = predecir(modelo(), local, visita)
-    pct = [int(v) for v in re.findall(r'class="lm-pct" style="--v:(\d+)"', html)]
+    # el texto de cada tarjeta está en el HTML y coincide con los valores redondeados (y con la leyenda de la barra)
+    pct = [int(v) for v in re.findall(r'<span class="lm-pct">(\d+)%</span>', html)]
     assert pct == redondear_100(probs) and sum(pct) == 100
+    assert pct == [int(v) for v in re.findall(r"<b>(\d+)%</b>", html)[:3]]
+    assert "--v:" not in html and 'class="lm-pct" style' not in html  # ya no es un contador CSS
     assert html.count("lm-pcard is-top") == 1
     # la barra usa los valores sin redondear
     w = [float(v) for v in re.findall(r'<i style="--w:([\d.]+);', html)]
@@ -165,7 +168,7 @@ def _resumen(html, etiqueta):
 def _es_rejilla(at):
     html = _sin_css(at)
     return ('<h1 class="lm-h1">Equipos</h1>' in html and "lm-hero" not in html
-            and at.selectbox[0].value is None and not at.get("button_group"))
+            and not at.selectbox and not at.get("button_group"))
 
 
 def test_equipos_toluca_activo():
@@ -245,12 +248,12 @@ def test_equipos_con_slug_redirige_a_la_pagina_del_equipo():
     assert at.query_params["equipo"] == ["cruz-azul"]
 
 
-def test_equipos_elegir_en_el_selector_abre_el_equipo():
-    at = _correr("paginas/equipos.py")
-    at.selectbox[0].set_value("Atlas").run()
-    assert not at.exception, [e.value for e in at.exception]
-    assert at.selectbox[0].value == "Atlas" and "lm-hero" in _sin_css(at)
-    assert at.query_params["equipo"] == ["atlas"]
+def test_equipos_entrada_no_tiene_selector_la_rejilla_es_el_selector():
+    for slug in (None, "xyz"):
+        at = _correr("paginas/equipos.py", equipo=slug)
+        assert not at.selectbox and not at.get("selectbox"), slug  # sin «Elige un equipo»
+        assert "sel_rejilla" not in at.session_state and "abrir_equipo" not in at.session_state
+        assert len(at.get("page_link")) == 25  # las 25 tarjetas son los enlaces
 
 
 # --- Equipo: página de un equipo ---

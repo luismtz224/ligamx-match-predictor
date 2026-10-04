@@ -24,6 +24,8 @@ Llamar `inyectar_css()` una vez por página, al inicio. Si `st.navigation` repin
 - Mobile-first (390 px), después escritorio (1280 px). Sin tablas anchas ni scroll horizontal de página.
 - Todo margen, relleno y hueco es múltiplo de 8. Objetivo táctil de 48 px.
 - Alinear a la izquierda; el hero nunca va centrado.
+- Padding superior del contenido: 64 px en móvil y en escritorio. La barra fija de Streamlit (», y en Cloud Fork, GitHub y el menú) mide 60 px y no se oculta; con 40 px, a 390 px quedaba pegada a la etiqueta «Local».
+- Las cifras son texto real, nunca un contador CSS ni `@property`. Streamlit reutiliza el nodo y solo cambia el atributo `style`: una animación cuyo valor final dependa de una variable CSS que cambia con el elemento ya montado puede quedarse con el valor viejo en Safari. Las animaciones usan valores fijos en sus keyframes (`lm-grow`, `lm-rise`, `lm-draw`) y lo que varía (`--w`, `--p`) va en propiedades normales.
 - Una palabra del título del Predictor lleva `class="lm-grad-text"`.
 - Cifras que se comparan con `font-variant-numeric: tabular-nums` (ya está en las clases).
 - Usar `team-<club>` (colores listos para fondo oscuro), nunca el color crudo del escudo. Si los dos equipos son del mismo tono, el visitante usa su `-2`.
@@ -46,12 +48,14 @@ Probabilidad (3 en una fila; `is-top` solo en la más probable; porcentajes ente
     <div class="lm-pcard__tag">Local</div>
     <span class="lm-crest has-img" style="--s:40px"><img src="data:image/png;base64,..." alt=""></span>
     <div class="lm-pcard__name">Club America</div>
-    <div class="lm-pcard__pct"><span class="lm-pct" style="--v:44" aria-label="44 por ciento"></span></div>
+    <div class="lm-pcard__pct"><span class="lm-pct">44%</span></div>
   </div>
   <!-- Empate: sin --team; en vez del escudo -->
   <span style="width:40px;height:40px;display:flex;align-items:center;justify-content:center"><i style="width:24px;height:4px;border-radius:2px;background:var(--draw)"></i></span>
 </div>
 ```
+
+El porcentaje de la tarjeta es **texto real** en el HTML: siempre es el valor correcto en el DOM y lo lee un lector de pantalla. No se usa un contador CSS (`@property` + `counter()`): en Safari las tarjetas no se actualizaban al cambiar de equipo, mientras la barra y la leyenda sí.
 
 Barra apilada (`--w` = porcentaje sin redondear, `--c` = color):
 ```html
@@ -126,12 +130,13 @@ La página de un equipo (`paginas/equipo.py`) se viste con sus colores, sin Java
 
 ## Equipos: rejilla y página oculta
 
-- `paginas/equipos.py` es la entrada: título corto, selector (llega vacío) y la rejilla de 25 tarjetas. `/equipos?equipo=<slug>` **redirige** con `st.switch_page` a `paginas/equipo.py`; sin parámetro o con un slug inválido muestra la rejilla y limpia la URL. Los enlaces del Ranking siguen yendo a `?equipo=<slug>`.
+- `paginas/equipos.py` es la entrada: título corto y la rejilla de 25 tarjetas (**sin selector**: la rejilla es el selector). `/equipos?equipo=<slug>` **redirige** con `st.switch_page` a `paginas/equipo.py`; sin parámetro o con un slug inválido muestra la rejilla y limpia la URL. Los enlaces del Ranking siguen yendo a `?equipo=<slug>`.
 - `paginas/equipo.py` es una `st.Page(..., url_path="equipo", visibility="hidden")`: arriba «← Todos los equipos», el selector, la página del equipo y, al final, otro «← Todos los equipos» (`st-key-volver` y `st-key-volver-abajo`, 48 px de alto). **No lleva rejilla**: se quitó porque al tocar otra tarjeta desde el final de la página no se abría desde arriba (reportado en el dispositivo de Luis). Cambiar de equipo es con el selector, que ya está arriba, o volviendo a la rejilla con cualquiera de los dos enlaces. Sin equipo o con slug inválido vuelve a la rejilla.
 - Enlace «← Todos los equipos» (arriba y abajo): 16 px como mínimo (el `a` y todo lo que lleva dentro: Streamlit pinta el texto de `page_link` más chico por defecto, por eso la regla incluye `a *`) y 48 × 48 px de área táctil (`--tap`).
 - Ficha: los valores de más de 24 caracteres (`componentes.FACT_LARGO`: palmarés, estadio, ciudad...) llevan `class="largo"`. A 599 px o menos van en columna, con la etiqueta arriba y el texto abajo alineado a la izquierda; en escritorio quedan en fila (etiqueta a la izquierda, valor a la derecha). Los valores cortos (siglas, apodo, fundación) siempre van en fila.
 - **Por qué dos páginas:** al cambiar solo los query params de una misma página, el navegador mantiene anclado el viewport a la tarjeta tocada (cuando la página del equipo llevaba la rejilla al final, esa tarjeta quedaba abajo) y se cae al fondo; con `overflow-anchor: none` el scroll se queda donde estaba. Streamlit solo reinicia el scroll a 0 al cambiar de *página* (medido). Cada tarjeta enlaza a Equipos y este redirige: el cambio de página abre el equipo desde arriba sin JavaScript.
 - Cada tarjeta y fila: `st.container(key="tarjeta-<slug>" / "fila-<slug>")` con el HTML y un `st.page_link` transparente encima (`st-key-*` y la etiqueta `a`).
+- **El overlay debe cubrir toda la tarjeta o fila.** Streamlit pone `position: relative` y `margin: -6px` (arriba y abajo) al contenedor (`stElementContainer`) del `page_link`, que mide 16 × 0 px. Ese contenedor era el bloque contenedor del overlay `inset: 0`: el enlace medía 16 × 0 px, el clic caía en el texto y solo lo seleccionaba (se vio en producción). Con solo `position: static` quedaban sin enlace las esquinas de abajo (−12 px de márgenes). En `custom.css` el contenedor del enlace es `position: static; margin: 0`, el `a` lleva `margin: 0` (Streamlit le pone 2 px) y tarjetas y filas llevan `user-select: none`. Se prueba con clics de ratón reales (`tests/test_clic_real.py`: `document.elementFromPoint` en 7 puntos y un clic real en la esquina inferior, a 390 y 1280 px), no con `element.click()`, que ignora la geometría.
 - Costo conocido: dentro de un equipo el menú lateral no resalta «Equipos» (la página oculta no está en la lista).
 
 ## Streamlit: qué es frágil
@@ -139,6 +144,8 @@ La página de un equipo (`paginas/equipo.py`) se viste con sus colores, sin Java
 - Selectores `[data-testid]` y `[data-baseweb]` del bloque «Adaptación a Streamlit» del CSS cambian entre versiones. Probar al actualizar.
 - Barra de navegación inferior fija en celular: no se hace. `st.navigation` en barra lateral (menú en celular).
 - Selector de equipo: el escudo va al lado, no dentro de la opción.
+- Un overlay `position: absolute` dentro de un elemento de Streamlit depende del contenedor posicionado más cercano, y los contenedores de elemento traen `position: relative` y márgenes negativos: medir con `getBoundingClientRect` y `document.elementFromPoint`.
+- En Streamlit 1.64 no existe `[data-baseweb="select"]` en el DOM del selectbox (las reglas del CSS que lo usan no empatan); para automatizarlo, `role="combobox"`.
 - `st.page_link` a la misma página no actualiza la URL del navegador (solo los query params del servidor): por eso la navegación entre equipos pasa por un cambio de página.
 - Streamlit resta 16 px (`margin-bottom: -1rem`) al contenedor de markdown: en tarjetas y filas con enlace se anula en `custom.css`.
 - La barra del ranking con color por equipo no existe como columna: se pinta la lista en HTML.
