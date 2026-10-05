@@ -1,4 +1,8 @@
-"""Cargas cacheadas. No importa src.entrenar (arrastra xgboost, que la app no instala)."""
+"""Cargas cacheadas. No importa src.entrenar (arrastra xgboost, que la app no instala).
+
+Todo lo que se cachea y se lee de un archivo recibe la huella (hash del contenido, `src.huella`) como
+argumento: en Cloud un push recarga el código pero no vacía las cachés, y sin esto el HTML nuevo se
+mostraba con el CSS (o el modelo, o los CSV) viejos. Una función nueva que lea un archivo debe hacer lo mismo."""
 import base64
 import re
 from pathlib import Path
@@ -7,10 +11,12 @@ import joblib
 import streamlit as st
 
 from interfaz import componentes
-from src.equipos import (cargar_equipos, cargar_rivalidades, nombre_mostrado,
-                         ordenar_por_nombre)
+from src.equipos import (RUTA_EQUIPOS, RUTA_RIVALIDADES, cargar_equipos, cargar_rivalidades,
+                         nombre_mostrado, ordenar_por_nombre)
 from src.features import cargar_partidos, procesar
 from src.formato import color_distinto
+from src.huella import huella
+from src.imagen import RUTA_FUENTE
 
 RAIZ = Path(__file__).resolve().parent.parent
 RUTA_MODELO = RAIZ / "modelos" / "modelo.joblib"
@@ -21,8 +27,13 @@ PX_MAX_CHICO = 48  # hasta aquí se usan los escudos de 96 px; arriba, los de 25
 
 
 @st.cache_resource
-def css():
+def _css(contenido):
     return RUTA_CSS.read_text(encoding="utf-8")
+
+
+def css():
+    """Texto de estilos/custom.css; se vuelve a leer si el archivo cambia."""
+    return _css(huella(RUTA_CSS))
 
 
 def inyectar_css():
@@ -30,22 +41,34 @@ def inyectar_css():
 
 
 @st.cache_resource
-def modelo():
-    """Dict de modelo.joblib: modelo, cols, elo, hist, activos. Solo lectura."""
+def _modelo(contenido):
     return joblib.load(RUTA_MODELO)
 
 
+def modelo():
+    """Dict de modelo.joblib: modelo, cols, elo, hist, activos. Solo lectura."""
+    return _modelo(huella(RUTA_MODELO))
+
+
 @st.cache_resource
-def partidos():
-    """(feat, elo, hist) de procesar() sobre MEX.csv, con los hiperparámetros del modelo.
-    Para forma e historial. Solo lectura."""
+def _partidos(contenido):
     return procesar(cargar_partidos(RUTA_CSV), K=20, ventaja=60, regresion=0.0)
 
 
+def partidos():
+    """(feat, elo, hist) de procesar() sobre MEX.csv, con los hiperparámetros del modelo.
+    Para forma e historial. Solo lectura."""
+    return _partidos(huella(RUTA_CSV))
+
+
 @st.cache_resource
+def _colores_css(contenido):
+    return {k: v.lower() for k, v in re.findall(r"--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})", css())}
+
+
 def colores_css():
     """{nombre de variable: hex} de las variables de color de estilos/custom.css."""
-    return {k: v.lower() for k, v in re.findall(r"--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})", css())}
+    return _colores_css(huella(RUTA_CSS))
 
 
 def colores_partido(local, visita):
@@ -63,15 +86,23 @@ def colores_partido(local, visita):
 
 
 @st.cache_resource
+def _equipos(contenido):
+    return cargar_equipos(RUTA_EQUIPOS)
+
+
 def equipos():
     """Ficha de los 25 equipos (datos/equipos.csv), indexada por nombre. Solo lectura."""
-    return cargar_equipos()
+    return _equipos(huella(RUTA_EQUIPOS))
 
 
 @st.cache_resource
+def _rivalidades(contenido):
+    return cargar_rivalidades(RUTA_RIVALIDADES)
+
+
 def rivalidades():
     """Clásicos (datos/rivalidades.csv). Solo lectura."""
-    return cargar_rivalidades()
+    return _rivalidades(huella(RUTA_RIVALIDADES))
 
 
 _DE_SLUG = {v: k for k, v in componentes.SLUG.items()}
@@ -83,12 +114,23 @@ def equipo_de_slug(slug):
 
 
 @st.cache_data
+def _escudo_b64(archivo, lado, contenido):
+    return base64.b64encode((DIR_ESCUDOS / str(lado) / archivo).read_bytes()).decode("ascii")
+
+
 def escudo_b64(archivo, lado):
-    """PNG del escudo en base64, o None si el archivo no existe."""
-    ruta = DIR_ESCUDOS / str(lado) / archivo
-    if not archivo or not ruta.is_file():
+    """PNG del escudo en base64, o None si el archivo no existe. Se vuelve a leer si el archivo cambia."""
+    ruta = DIR_ESCUDOS / str(lado) / archivo if archivo else None
+    if ruta is None or not ruta.is_file():
         return None
-    return base64.b64encode(ruta.read_bytes()).decode("ascii")
+    return _escudo_b64(archivo, lado, huella(ruta))
+
+
+def huella_png(local, visita):
+    """Huella de todo lo que determina la imagen descargable de un partido: modelo, partidos, CSS (colores),
+    fichas de equipos, los dos escudos grandes y la fuente. Llave de `_png` en paginas/predictor.py."""
+    return huella(RUTA_MODELO, RUTA_CSV, RUTA_CSS, RUTA_EQUIPOS, ruta_escudo(local), ruta_escudo(visita),
+                  RUTA_FUENTE)
 
 
 def ruta_escudo(equipo, lado=512):

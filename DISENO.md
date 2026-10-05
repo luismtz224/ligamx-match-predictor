@@ -6,18 +6,23 @@ Referencia para implementar el frontend en Streamlit. El CSS está en `estilos/c
 
 ```python
 # interfaz/recursos.py
-from pathlib import Path
 import streamlit as st
+from src.huella import huella
 
 @st.cache_resource
+def _css(contenido: str) -> str:  # `contenido` = huella del archivo: es la llave de la caché
+    return RUTA_CSS.read_text(encoding="utf-8")
+
 def css() -> str:
-    return (Path(__file__).resolve().parent.parent / "estilos" / "custom.css").read_text(encoding="utf-8")
+    return _css(huella(RUTA_CSS))
 
 def inyectar_css() -> None:
     st.markdown(f"<style>{css()}</style>", unsafe_allow_html=True)
 ```
 
 Llamar `inyectar_css()` una vez por página, al inicio. Si `st.navigation` repinta, llamarlo en `app.py` antes de `pg.run()`.
+
+**Cachés y despliegues.** En Cloud un `git push` recarga el código de las páginas pero no vacía `st.cache_resource` ni `st.cache_data`: con `css()` sin argumentos se veía HTML nuevo con CSS viejo. Toda función cacheada que lea un archivo (CSS, `modelo.joblib`, los CSV, los escudos, la fuente) recibe como argumento la huella del archivo (`src.huella.huella`, hash del contenido; el argumento no debe llevar guion bajo porque esos no entran a la llave). Lo hacen `css`, `colores_css`, `modelo`, `partidos`, `equipos`, `rivalidades`, `escudo_b64`, la fuente del PNG y `_png` (su llave es `huella_png`: modelo, partidos, CSS, fichas, escudos y fuente). Una prueba (`tests/test_cache_archivos.py`) recorre el código y falla si una función con `@st.cache_*` no recibe `contenido` o `recursos`. No se cubre `.streamlit/config.toml` (lo lee Streamlit al arrancar: requiere reinicio de la app).
 
 ## Reglas
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from src.formato import contraste
+from src.huella import huella
 
 RUTA_FUENTE = Path(__file__).resolve().parent.parent / "assets" / "fuentes" / "SourceSans3VF-Upright.woff2"
 
@@ -31,10 +32,15 @@ PIE = ("Predicción del modelo · ligamx.streamlit.app",
 
 
 @lru_cache(maxsize=64)
-def _fuente(tam, peso):
+def _fuente_cacheada(tam, peso, contenido):
     f = ImageFont.truetype(str(RUTA_FUENTE), tam)
     f.set_variation_by_axes([peso])
     return f
+
+
+def _fuente(tam, peso):
+    """Fuente de ese tamaño y peso; si el archivo de la fuente cambia, se vuelve a cargar."""
+    return _fuente_cacheada(tam, peso, huella(RUTA_FUENTE))
 
 
 def _texto(d, xy, txt, tam, color=TEXTO, peso=400, ancla="ls", ancho_max=None):

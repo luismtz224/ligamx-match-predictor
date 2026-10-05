@@ -20,7 +20,7 @@ def _forma(feat, equipo):
 
 
 @st.cache_data
-def _png(local, visita):
+def _png(local, visita, recursos):  # `recursos` = r.huella_png(...): sin él, un push dejaba la imagen vieja
     est = r.modelo()
     feat, _, _ = r.partidos()
     pct = redondear_100(predecir(est, local, visita))
@@ -120,7 +120,7 @@ with st.expander("Comparar con los momios (opcional)"):
     md(f'<p class="lm-muted" style="font-size:14px;margin-top:8px">Margen de la casa: '
        f'{100 * margen:.1f}%. El mercado se calcula quitando ese margen (1/momio, normalizado).</p>')
 
-st.download_button("Descargar imagen", data=_png(local, visita),
+st.download_button("Descargar imagen", data=_png(local, visita, r.huella_png(local, visita)),
                    file_name=f"prediccion-{c.SLUG[local]}-vs-{c.SLUG[visita]}.png",
                    mime="image/png")
 md(f'<div style="margin-top:24px">{c.aviso(c.AVISO_EDUCATIVO)}</div>')
