@@ -24,6 +24,7 @@ RUTA_MODELO = RAIZ / "modelos" / "modelo.joblib"
 RUTA_CSV = RAIZ / "datos" / "crudos" / "MEX.csv"
 RUTA_CSS = RAIZ / "estilos" / "custom.css"
 RUTA_CALIBRACION = RAIZ / "datos" / "procesados" / "calibracion.csv"
+RUTA_PREDICCIONES = RAIZ / "datos" / "procesados" / "predicciones_oof.csv"
 DIR_ESCUDOS = RAIZ / "assets" / "escudos"
 PX_MAX_CHICO = 48  # hasta aquí se usan los escudos de 96 px; arriba, los de 256 px
 
@@ -74,6 +75,19 @@ def calibracion():
     if not RUTA_CALIBRACION.is_file():
         return None
     return _calibracion(huella(RUTA_CALIBRACION))
+
+
+@st.cache_resource
+def _predicciones(contenido):
+    return pd.read_csv(RUTA_PREDICCIONES, parse_dates=["fecha"])
+
+
+def predicciones():
+    """Predicciones fuera de muestra de la logística y los momios (datos/procesados/predicciones_oof.csv, que genera
+    `python -m src.exportar_predicciones`), o None si el archivo no está. Solo lectura."""
+    if not RUTA_PREDICCIONES.is_file():
+        return None
+    return _predicciones(huella(RUTA_PREDICCIONES))
 
 
 @st.cache_resource

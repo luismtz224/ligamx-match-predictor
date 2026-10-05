@@ -13,16 +13,10 @@ import pytest
 
 from src import calibracion as cal
 from src import exportar_calibracion as exp
-from src.evaluacion import oof_walk_forward
 
 RAIZ = Path(__file__).resolve().parent.parent
 RUTA = RAIZ / "datos" / "procesados" / "calibracion.csv"
 REL = "datos/procesados/calibracion.csv"
-
-
-@pytest.fixture(scope="module")
-def oof():
-    return oof_walk_forward()
 
 
 @pytest.fixture(scope="module")

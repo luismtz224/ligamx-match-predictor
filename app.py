@@ -9,6 +9,7 @@ paginas = [
     st.Page("paginas/equipos.py", title="Equipos", icon=":material/shield:"),
     st.Page("paginas/equipo.py", title="Equipo", url_path="equipo", visibility="hidden"),
     st.Page("paginas/ranking.py", title="Ranking", icon=":material/leaderboard:"),
+    st.Page("paginas/temporadas.py", title="Temporadas", icon=":material/calendar_month:"),
     st.Page("paginas/sobre_modelo.py", title="Sobre el modelo", icon=":material/info:"),
 ]
 pg = st.navigation(paginas)

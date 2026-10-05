@@ -456,3 +456,46 @@ def detalle_calibracion(titulo, grupos):
         cuerpo += f'<div class="lm-cal-grupo"><div class="lm-caption {escape(clase)}">{escape(nombre)}</div>{lineas}</div>'
     return (f'<details class="lm-detail lm-cal-detalle"><summary><span style="font-size:14px;line-height:24px;font-weight:600">{escape(titulo)}</span>'
             f'<span class="lm-detail__hint">Ver los números</span></summary>{cuerpo}</details>')
+
+
+# ===== Temporadas =====
+GANA = {"H": "gana local", "D": "empate", "A": "gana visitante"}  # resultado -> texto para lectores de pantalla
+
+
+def resumen_temporada(res, nombres):
+    """Dos tarjetas (regresión logística y momios) con los partidos, los aciertos, el accuracy y el log loss de
+    una temporada, calculados como en la tabla del README (accuracy con 2 decimales, log loss con 4).
+    `res` = src.resumen_temporada.resumen(...) y `nombres` = {modelo: nombre para mostrar}."""
+    tarjetas = []
+    for modelo, r in res.items():
+        dl = "".join(f"<dt>{escape(k)}</dt><dd>{escape(v)}</dd>" for k, v in (
+            ("Partidos", f"{r['partidos']:,}"), ("Aciertos", f"{r['aciertos']:,} de {r['partidos']:,}"),
+            ("Accuracy", f"{r['accuracy'] * 100:.2f}%"), ("Log loss", f"{r['log_loss']:.4f}")))
+        tarjetas.append(f'<div class="lm-record"><div class="lm-caption">{escape(nombres[modelo])}</div><dl>{dl}</dl></div>')
+    return f'<div class="lm-twocol keep" style="margin-bottom:16px">{"".join(tarjetas)}</div>'
+
+
+def tarjeta_partido(fecha, local, visitante, goles, pct, pred, real):
+    """Un partido como tarjeta (sin escudos: la lista no se infla). `local` y `visitante` son (llave del equipo,
+    nombre para mostrar, siglas); `goles` = (local, visitante); `pct` = {H, D, A} enteros que suman 100; `pred` y
+    `real` = resultado más probable del modelo y el que pasó (H, D o A). Acierto o fallo va con texto e ícono (no
+    solo con color) y el color del equipo solo va en el borde de sus siglas, nunca en texto. «L · E · V» se lee
+    completo para lectores de pantalla."""
+    ok = pred == real
+    equipos = "".join(
+        f'<div class="lm-m__eq"><span class="lm-sig" style="--team:{color_equipo(llave)}">{escape(sig)}</span>'
+        f'<span>{escape(nombre)}</span><b>{int(g)}</b></div>'
+        for (llave, nombre, sig), g in zip((local, visitante), goles))
+    modelo = " · ".join((f"<b>{pct[r]} % {letra}</b>" if r == pred else f"{pct[r]} % {letra}")
+                        for r, letra in (("H", "L"), ("D", "E"), ("A", "V")))
+    leido = (f"Modelo: local {pct['H']} por ciento, empate {pct['D']} por ciento, visitante {pct['A']} por ciento. "
+             f"{'Acierto' if ok else 'Fallo'}: el modelo predijo {GANA[pred]} y pasó {GANA[real]}.")
+    tag = "✓ Acierto" if ok else "✕ Fallo"
+    return (f'<article class="lm-m {"ok" if ok else "fallo"}"><div class="lm-m__top"><span>{escape(fecha)}</span>'
+            f'<span class="lm-m__tag">{tag}</span></div>{equipos}'
+            f'<div class="lm-m__mod"><span class="lm-sr">{escape(leido)}</span>'
+            f'<span aria-hidden="true">Modelo: {modelo}</span></div></article>')
+
+
+def lista_partidos(tarjetas):
+    return f'<div class="lm-ms">{"".join(tarjetas)}</div>'

@@ -179,7 +179,7 @@ def test_toda_funcion_cacheada_recibe_una_huella_como_argumento():
                     parametros = [a.arg for a in nodo.args.args]
                     assert {"contenido", "recursos"} & set(parametros), f"{ruta.name}:{nodo.name} {parametros}"
     assert {"_css", "_modelo", "_partidos", "_colores_css", "_equipos", "_rivalidades", "_escudo_b64", "_png",
-            "_calibracion"} <= set(vistas)
+            "_calibracion", "_predicciones"} <= set(vistas)
 
 
 def test_calibracion_sigue_al_csv_y_es_none_si_falta(tmp_path, monkeypatch):
@@ -191,3 +191,15 @@ def test_calibracion_sigue_al_csv_y_es_none_si_falta(tmp_path, monkeypatch):
     lineas = ruta.read_text(encoding="utf-8").splitlines(True)
     ruta.write_text("".join(lineas[:-1]), encoding="utf-8")  # el CSV cambió en un despliegue
     assert len(recursos.calibracion()) == 23
+
+
+def test_predicciones_sigue_al_csv_y_es_none_si_falta(tmp_path, monkeypatch):
+    ruta = tmp_path / "predicciones_oof.csv"
+    monkeypatch.setattr(recursos, "RUTA_PREDICCIONES", ruta)
+    assert recursos.predicciones() is None  # sin archivo: la página avisa, no falla
+    shutil.copy(RAIZ / "datos" / "procesados" / "predicciones_oof.csv", ruta)
+    df = recursos.predicciones()
+    assert len(df) == 2651 and str(df["fecha"].dtype).startswith("datetime64")  # la fecha llega como fecha
+    lineas = ruta.read_text(encoding="utf-8").splitlines(True)
+    ruta.write_text("".join(lineas[:-1]), encoding="utf-8")  # el CSV cambió en un despliegue
+    assert len(recursos.predicciones()) == 2650
