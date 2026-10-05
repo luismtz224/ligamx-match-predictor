@@ -421,3 +421,79 @@ def test_ficha_de_la_pagina_marca_el_palmares_largo():
     html = _eq("toluca")[1]
     assert '<div class="largo"><dt>Palmarés</dt>' in html
     assert '<div><dt>Siglas</dt><dd>TOL</dd></div>' in html  # lo corto sigue en una fila
+
+
+# ===== Fase A: gráfica de calibración en «Sobre el modelo» =====
+def _sobre_el_modelo(csv=None, monkeypatch=None):
+    if csv is not None:
+        from interfaz import recursos as _r
+        monkeypatch.setattr(_r, "RUTA_CALIBRACION", csv)
+    at = AppTest.from_file(str(RAIZ / "app.py"), default_timeout=120).run()
+    at = at.switch_page("paginas/sobre_modelo.py").run()
+    assert not at.exception, [e.value for e in at.exception]
+    return at
+
+
+def test_sobre_el_modelo_tiene_las_dos_graficas_con_su_n_y_su_resumen():
+    at = _sobre_el_modelo()
+    html = _sin_css(at)
+    tabla = pd.read_csv(RAIZ / "datos" / "procesados" / "calibracion.csv")
+    assert html.count('<svg class="lm-calsvg"') == 2 and html.count('role="img"') >= 2
+    assert 'aria-label="Gana local. Diagrama de calibración' in html and 'aria-label="Gana visitante. Diagrama' in html
+    assert ">Gana local<" in html and ">Gana visitante<" in html
+    # cada punto lleva su n: las 24 n del CSV, en el mismo orden (resultados local y visitante; logística y mercado)
+    en_html = re.findall(r'<text class="cal-n [lm]" x="[\d.]+" y="[\d.]+">(\d+)</text>', html)
+    esperado = []
+    for resultado in ("local", "visitante"):
+        for fuente in ("logistica", "mercado"):
+            esperado += [str(n) for n in tabla.query("fuente == @fuente and resultado == @resultado").sort_values("grupo")["n"]]
+    assert sorted(en_html) == sorted(esperado) and len(en_html) == 24
+    # el resumen en texto trae el ECE de cada serie (con los números del CSV)
+    for (fuente, resultado), g in tabla.groupby(["fuente", "resultado"]):
+        assert f"error promedio (ECE) de {g['ece'].iloc[0] * 100:.1f} puntos" in html, (fuente, resultado)
+    assert html.count("<details") >= 2 and html.count('class="lm-duel"') == 24
+    assert "n = 442 partidos · dio 25.7% · pasó 26.0%" in html
+
+
+def test_sobre_el_modelo_explica_n_y_conserva_la_conclusion_honesta():
+    html = _sin_css(_sobre_el_modelo())
+    assert "n es cuántos partidos son" in html and "pura suerte" in html and "unos 441 a 442 partidos" in html
+    assert "no muestra descalibración ni en «gana local» ni en «gana visitante»" in html
+    assert "el mercado queda descalibrado en «gana local»" in html
+    assert "esta conversión de momios" in html and "Probablemente la conversión influya" in html
+    assert "es una hipótesis, no un hecho" in html  # no se afirma como hecho
+    # lo que ya estaba sigue ahí
+    for texto in ("Qué tan bueno es", "1.0037", "Ningún modelo supera al mercado", c.AVISO_EDUCATIVO):
+        assert texto in html, texto
+
+
+def test_sobre_el_modelo_html_en_una_linea_y_peso_razonable():
+    at = _sobre_el_modelo()
+    for m in at.markdown:
+        if m.value.startswith("<style>/*"):
+            continue
+        assert "\n" not in m.value and m.value == m.value.strip(), m.value[:80]
+    peso = sum(len(m.value) for m in at.markdown) / 1024
+    assert peso < 500, f"{peso:.0f} KB"  # regla de Extras: avisar si una página pasa de ~500 KB
+
+
+def test_sobre_el_modelo_sin_el_csv_avisa_y_no_falla(tmp_path, monkeypatch):
+    at = _sobre_el_modelo(tmp_path / "no_esta.csv", monkeypatch)
+    html = _sin_css(at)
+    assert "La gráfica de calibración no está disponible" in html and "lm-calsvg" not in html
+    assert "Qué tan bueno es" in html and "1.0037" in html  # el resto de la página sigue
+
+
+def test_sobre_el_modelo_sigue_al_csv_si_cambia(tmp_path, monkeypatch):
+    """Cambiar una bandera del CSV cambia la conclusión que se muestra (no está escrita a mano)."""
+    ruta = tmp_path / "calibracion.csv"
+    t = pd.read_csv(RAIZ / "datos" / "procesados" / "calibracion.csv")
+    t.to_csv(ruta, index=False)
+    at = _sobre_el_modelo(ruta, monkeypatch)
+    assert "el mercado queda descalibrado en «gana local»" in _sin_css(at)
+    t.loc[(t["fuente"] == "mercado") & (t["resultado"] == "local"), "sobre_ruido"] = False
+    t.to_csv(ruta, index=False)
+    at.run()
+    html = _sin_css(at)
+    assert not at.exception and "el mercado queda descalibrado en «gana local»" not in html
+    assert "el mercado no muestra descalibración ni en «gana local» ni en «gana visitante»" in html

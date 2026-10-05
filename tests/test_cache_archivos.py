@@ -178,4 +178,16 @@ def test_toda_funcion_cacheada_recibe_una_huella_como_argumento():
                     vistas.append(nodo.name)
                     parametros = [a.arg for a in nodo.args.args]
                     assert {"contenido", "recursos"} & set(parametros), f"{ruta.name}:{nodo.name} {parametros}"
-    assert {"_css", "_modelo", "_partidos", "_colores_css", "_equipos", "_rivalidades", "_escudo_b64", "_png"} <= set(vistas)
+    assert {"_css", "_modelo", "_partidos", "_colores_css", "_equipos", "_rivalidades", "_escudo_b64", "_png",
+            "_calibracion"} <= set(vistas)
+
+
+def test_calibracion_sigue_al_csv_y_es_none_si_falta(tmp_path, monkeypatch):
+    ruta = tmp_path / "calibracion.csv"
+    monkeypatch.setattr(recursos, "RUTA_CALIBRACION", ruta)
+    assert recursos.calibracion() is None  # sin archivo: la página avisa, no falla
+    shutil.copy(RAIZ / "datos" / "procesados" / "calibracion.csv", ruta)
+    assert len(recursos.calibracion()) == 24
+    lineas = ruta.read_text(encoding="utf-8").splitlines(True)
+    ruta.write_text("".join(lineas[:-1]), encoding="utf-8")  # el CSV cambió en un despliegue
+    assert len(recursos.calibracion()) == 23

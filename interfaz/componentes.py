@@ -4,6 +4,7 @@ Todo texto que viene de datos pasa por html.escape."""
 from html import escape
 
 from src.formato import con_signo, fecha_corta, mes_anio
+from src.grafica import CAL_ALTO, CAL_ANCHO
 
 AVISO_ESCUDOS = ("Los escudos son propiedad de sus respectivos clubes y se usan con fines "
                  "ilustrativos, sin fines de lucro.")
@@ -399,3 +400,59 @@ def clasicos(lista):
             f'<div class="lm-muted" style="font-size:14px">{texto_n} · G-E-P {int(k["g"])}-{int(k["e"])}-{int(k["p"])}'
             f'</div></div></div>{ultimo}{nota}</div>')
     return f'<div class="lm-twocol">{"".join(out)}</div>'
+
+
+# ===== Gráfica de calibración =====
+def leyenda_calibracion():
+    """Qué es cada marca: forma y color (la forma distingue las series sin depender del color)."""
+    def marca(clase, forma):
+        return f'<svg class="cal-clave {clase}" viewBox="0 0 16 16" aria-hidden="true">{forma}</svg>'
+    items = [(marca("l", '<circle cx="8" cy="8" r="5"></circle>'), "Regresión logística"),
+             (marca("m", '<rect x="3" y="3" width="10" height="10"></rect>'), "Mercado (momios)"),
+             (marca("d", '<path d="M1 15 L15 1"></path>'), "Calibración perfecta")]
+    return ('<div class="lm-cal-leyenda">' + "".join(f"<span>{svg}{escape(t)}</span>" for svg, t in items) + "</div>")
+
+
+def grafica_calibracion(titulo, geo, aria, resumenes, ayuda, detalle=""):
+    """Un diagrama de confiabilidad. `geo` = src.grafica.geometria_calibracion; `aria` = descripción para lectores de
+    pantalla; `resumenes` = [(nombre de la serie, clase, texto del resumen)] visible debajo; `ayuda` = el texto de
+    los ejes; `detalle` = HTML del <details> con los números de cada punto. Cada punto lleva su n escrito (la de la logística a su izquierda, la del mercado a su derecha)."""
+    ejes = "".join(f'<text class="cal-t {e["eje"]}" x="{e["x"]}" y="{e["y"]}">{escape(e["texto"])}</text>'
+                   for e in geo["etiquetas"])
+    capas = ""
+    for nombre, clase, forma in (("logistica", "l", "circulo"), ("mercado", "m", "cuadrado")):
+        serie = geo["series"].get(nombre)
+        if not serie:
+            continue
+        marcas = ""
+        for p in serie["puntos"]:
+            if forma == "circulo":
+                marcas += f'<circle class="cal-p {clase}" cx="{p["x"]}" cy="{p["y"]}" r="{p["r"]}"></circle>'
+                x_n = round(p["x"] - p["r"] - 3, 1)  # la n de la logística, a la izquierda del punto
+            else:
+                marcas += (f'<rect class="cal-p {clase}" x="{round(p["x"] - p["r"], 1)}" y="{round(p["y"] - p["r"], 1)}" '
+                           f'width="{round(2 * p["r"], 1)}" height="{round(2 * p["r"], 1)}"></rect>')
+                x_n = round(p["x"] + p["r"] + 3, 1)  # la del mercado, a la derecha: no se encima con la otra serie
+            marcas += f'<text class="cal-n {clase}" x="{x_n}" y="{round(p["y"] + 4, 1)}">{p["n"]}</text>'
+        capas += f'<path class="cal-ic {clase}" d="{serie["ic"]}"></path>{marcas}'
+    svg = (f'<svg class="lm-calsvg" viewBox="0 0 {CAL_ANCHO} {CAL_ALTO}" role="img" aria-label="{escape(aria)}">'
+           f'<path class="gr" d="{geo["rejilla"]}"></path><path class="cal-diag" d="{geo["diagonal"]}"></path>'
+           f'{ejes}{capas}</svg>')
+    filas = "".join(f'<div><dt class="{escape(clase)}">{escape(nombre)}</dt><dd>{escape(texto)}</dd></div>'
+                    for nombre, clase, texto in resumenes)
+    return (f'<figure class="lm-cal"><div class="lm-caption">{escape(titulo)}</div>{svg}'
+            f'<p class="lm-muted lm-cal-ayuda" style="margin:0;font-size:12px;line-height:16px">{escape(ayuda)}</p><dl class="lm-cal-res">{filas}</dl>{detalle}</figure>')
+
+
+def detalle_calibracion(titulo, grupos):
+    """Detalle de cada punto (n, predicha, real e intervalo) en un <details>, sin tabla ancha.
+    `grupos` = [(nombre de la serie, clase, [dict n, pred, freq, lo, hi])] con porcentajes ya redondeados (texto)."""
+    cuerpo = ""
+    for nombre, clase, filas in grupos:
+        lineas = "".join(
+            f'<div class="lm-duel"><div>Grupo {i}<small>n = {escape(str(f["n"]))} partidos · dio {escape(f["pred"])} · '
+            f'pasó {escape(f["freq"])} (entre {escape(f["lo"])} y {escape(f["hi"])})</small></div></div>'
+            for i, f in enumerate(filas, start=1))
+        cuerpo += f'<div class="lm-cal-grupo"><div class="lm-caption {escape(clase)}">{escape(nombre)}</div>{lineas}</div>'
+    return (f'<details class="lm-detail lm-cal-detalle"><summary><span style="font-size:14px;line-height:24px;font-weight:600">{escape(titulo)}</span>'
+            f'<span class="lm-detail__hint">Ver los números</span></summary>{cuerpo}</details>')

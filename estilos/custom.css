@@ -378,3 +378,30 @@ h1, h2, h3 { font-family: var(--font-sans) !important; letter-spacing: -.02em; c
 [class*="st-key-volver"] a { min-height: var(--tap); min-width: var(--tap); display: inline-flex; align-items: center; gap: 8px; padding: 0 16px 0 0; color: var(--ink); font-weight: 600; text-decoration: none; border-radius: var(--lm-r-ctl); }
 [class*="st-key-volver"] a:hover { text-decoration: underline; text-decoration-color: var(--page-team, var(--accent)); text-decoration-thickness: 3px; text-underline-offset: 6px; }
 [class*="st-key-volver"] a:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+/* ===== Gráfica de calibración (Sobre el modelo) =====
+   Logística: círculo y --accent; mercado: cuadrado y --accent-2 (la forma distingue las series sin depender del color).
+   Cada punto lleva su n escrito (la logística a su izquierda, el mercado a su derecha). */
+.lm-cal .l, .lm-cal-leyenda .l, .lm-cal-grupo .l { --cal: var(--accent); }
+.lm-cal .m, .lm-cal-leyenda .m, .lm-cal-grupo .m { --cal: var(--accent-2); }
+.lm-cal { margin: 0; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--lm-r-card); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.lm-calsvg { display: block; width: 100%; height: auto; }
+.lm-calsvg .gr { fill: none; stroke: var(--line); stroke-width: 1; }
+.lm-calsvg .cal-diag { fill: none; stroke: var(--ink-muted); stroke-width: 1.5; stroke-dasharray: 5 5; }
+.lm-calsvg .cal-ic { fill: none; stroke: var(--cal); stroke-width: 1.6; stroke-linecap: round; }
+.lm-calsvg .cal-p { fill: var(--cal); stroke: var(--surface); stroke-width: 1.5; }
+.lm-calsvg .cal-n { fill: var(--cal); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lm-calsvg .cal-n.l { text-anchor: end; } .lm-calsvg .cal-n.m { text-anchor: start; }
+.lm-calsvg .cal-t { fill: var(--ink-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.lm-calsvg .cal-t.y { text-anchor: end; } .lm-calsvg .cal-t.x { text-anchor: middle; }
+.lm-cal-leyenda { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 16px 0 8px; font-size: 14px; line-height: 24px; }
+.lm-cal-leyenda span { display: inline-flex; align-items: center; gap: 8px; }
+.cal-clave { width: 16px; height: 16px; flex: none; }
+.cal-clave.l, .cal-clave.m { fill: var(--cal); }
+.cal-clave.d { fill: none; stroke: var(--ink-muted); stroke-width: 2; stroke-dasharray: 3 2; }
+.lm-cal-res { margin: 0; display: grid; gap: 8px; }
+.lm-cal-res dt { font-size: 14px; line-height: 24px; font-weight: 600; color: var(--cal); }
+.lm-cal-res dd { margin: 0; font-size: 14px; line-height: 24px; color: var(--ink); }
+.lm-cal-detalle { margin-top: 8px; }
+.lm-cal-grupo { margin-top: 8px; }
+.lm-cal-grupo .lm-caption { color: var(--cal); }

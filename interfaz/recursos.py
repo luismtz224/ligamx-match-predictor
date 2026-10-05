@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 import joblib
+import pandas as pd
 import streamlit as st
 
 from interfaz import componentes
@@ -22,6 +23,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 RUTA_MODELO = RAIZ / "modelos" / "modelo.joblib"
 RUTA_CSV = RAIZ / "datos" / "crudos" / "MEX.csv"
 RUTA_CSS = RAIZ / "estilos" / "custom.css"
+RUTA_CALIBRACION = RAIZ / "datos" / "procesados" / "calibracion.csv"
 DIR_ESCUDOS = RAIZ / "assets" / "escudos"
 PX_MAX_CHICO = 48  # hasta aquí se usan los escudos de 96 px; arriba, los de 256 px
 
@@ -59,6 +61,19 @@ def partidos():
     """(feat, elo, hist) de procesar() sobre MEX.csv, con los hiperparámetros del modelo.
     Para forma e historial. Solo lectura."""
     return _partidos(huella(RUTA_CSV))
+
+
+@st.cache_resource
+def _calibracion(contenido):
+    return pd.read_csv(RUTA_CALIBRACION)
+
+
+def calibracion():
+    """Datos de la gráfica de calibración (datos/procesados/calibracion.csv, que genera
+    `python -m src.exportar_calibracion`), o None si el archivo no está. Solo lectura."""
+    if not RUTA_CALIBRACION.is_file():
+        return None
+    return _calibracion(huella(RUTA_CALIBRACION))
 
 
 @st.cache_resource

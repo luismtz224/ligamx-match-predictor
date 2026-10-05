@@ -568,3 +568,100 @@ def test_css_sin_contadores_ni_property_para_el_porcentaje():
     """Los contadores CSS con @property (--lm-n) no se actualizaban en Safari: el número es texto real."""
     assert "@property" not in CSS and "counter-reset" not in CSS and "counter(" not in CSS
     assert "lm-count" not in CSS and "lm-pct::after" not in CSS
+
+
+# ===== Fase A: componentes de la gráfica de calibración =====
+from src.grafica import geometria_calibracion as _geo_cal  # noqa: E402
+from src.resumen_calibracion import (CLASE as _CLASE, FUENTES as _FUENTES, NOMBRE_FUENTE as _NF,  # noqa: E402
+                                     filas_detalle as _filas, resumen as _resumen, resumen_serie as _rs, serie as _serie,
+                                     texto_aria as _aria_cal)
+
+
+def _figura_cal(resultado="local", titulo="Gana local", ayuda="Ayuda", aria=None, con_detalle=True):
+    t = pd.read_csv(RAIZ / "datos" / "procesados" / "calibracion.csv")
+    geo = _geo_cal({f: _serie(t, f, resultado) for f in _FUENTES})
+    res = [(_NF[f], _CLASE[f], _rs(_resumen(t, f, resultado))) for f in _FUENTES]
+    detalle = c.detalle_calibracion("Cada punto, con su n", [(_NF[f], _CLASE[f], _filas(t, f, resultado))
+                                                              for f in _FUENTES]) if con_detalle else ""
+    return c.grafica_calibracion(titulo, geo, aria or _aria_cal(t, resultado), res, ayuda, detalle), t
+
+
+def test_grafica_calibracion_una_linea_con_aria_y_sin_scripts():
+    h, _ = _figura_cal()
+    _sin_sangria(h)
+    assert h.count("<svg") == 1 and 'role="img"' in h and 'aria-label="Gana local. Diagrama de calibración' in h
+    assert "<script" not in h and "onclick" not in h and "<title" not in h  # sin tooltips ni JavaScript
+    assert 'viewBox="0 0 360 340"' in h and h.startswith('<figure class="lm-cal">') and h.endswith("</figure>")
+
+
+def test_cada_punto_muestra_su_n_y_las_series_tienen_formas_distintas():
+    h, t = _figura_cal()
+    assert h.count('class="cal-p l"') == 6 and h.count('class="cal-p m"') == 6
+    assert h.count("<circle") == 6 and h.count("<rect") == 6  # logística: círculos; mercado: cuadrados
+    ns = re.findall(r'<text class="cal-n ([lm])" x="[\d.]+" y="[\d.]+">(\d+)</text>', h)
+    assert len(ns) == 12
+    esperado = {f: [int(n) for n in _serie(t, f, "local")["n"]] for f in _FUENTES}
+    assert [int(n) for k, n in ns if k == "l"] == esperado["logistica"]
+    assert [int(n) for k, n in ns if k == "m"] == esperado["mercado"]
+    # la n de la logística queda a la izquierda de su punto y la del mercado a la derecha
+    xs_l = [float(x) for x in re.findall(r'<circle class="cal-p l" cx="([\d.]+)"', h)]
+    xt_l = [float(x) for x in re.findall(r'<text class="cal-n l" x="([\d.]+)"', h)]
+    xs_m = [float(x) + float(w) / 2 for x, w in re.findall(r'<rect class="cal-p m" x="([\d.]+)" y="[\d.]+" width="([\d.]+)"', h)]
+    xt_m = [float(x) for x in re.findall(r'<text class="cal-n m" x="([\d.]+)"', h)]
+    assert all(a < b for a, b in zip(xt_l, xs_l)) and all(a > b for a, b in zip(xt_m, xs_m))
+
+
+def test_grafica_calibracion_resumen_visible_y_ayuda_en_texto():
+    h, _ = _figura_cal(ayuda="Horizontal: lo que dio el modelo")
+    assert "Horizontal: lo que dio el modelo" in h
+    assert h.count("<dt") == 2 and "error promedio (ECE) de 1.1 puntos, dentro del ruido esperado" in h
+    assert "error promedio (ECE) de 3.2 puntos, por encima del ruido esperado" in h
+    assert '<dt class="l">Regresión logística</dt>' in h and '<dt class="m">Mercado (momios)</dt>' in h
+
+
+def test_grafica_calibracion_escapa_el_texto():
+    h, _ = _figura_cal(titulo=PELIGRO, ayuda=PELIGRO, aria=PELIGRO)
+    assert PELIGRO not in h and h.count(escape(PELIGRO)) == 3
+    t = pd.read_csv(RAIZ / "datos" / "procesados" / "calibracion.csv")
+    d = c.detalle_calibracion(PELIGRO, [(PELIGRO, "l", _filas(t, "logistica", "local")[:1])])
+    assert PELIGRO not in d and escape(PELIGRO) in d
+    _sin_sangria(d)
+
+
+def test_detalle_calibracion_lista_n_dio_y_paso_de_cada_grupo():
+    h, _ = _figura_cal()
+    assert h.count("<details") == 1 and "Ver los números" in h
+    assert h.count('class="lm-duel"') == 12  # 6 grupos x 2 series
+    assert "n = 442 partidos · dio 25.7% · pasó 26.0% (entre 22.1% y 30.3%)" in h
+    assert "<table" not in h  # sin tablas anchas
+    sin, _ = _figura_cal(con_detalle=False)
+    assert "<details" not in sin
+
+
+def test_leyenda_calibracion_distingue_por_forma_y_color():
+    h = c.leyenda_calibracion()
+    _sin_sangria(h)
+    assert h.count("<svg") == 3 and h.count('aria-hidden="true"') == 3  # decorativos: el texto va al lado
+    assert "<circle" in h and "<rect" in h and "<path" in h
+    for t in ("Regresión logística", "Mercado (momios)", "Calibración perfecta"):
+        assert t in h
+
+
+def test_colores_de_la_calibracion_se_distinguen_y_se_leen():
+    """Logística (--accent) y mercado (--accent-2): ΔE >= 30 entre sí y contraste >= 4.5:1 sobre --surface
+    (los usa como texto: la n y el nombre de la serie). Además la forma (círculo / cuadrado) los distingue."""
+    from src.formato import delta_e
+    a, b, sup = _var("accent"), _var("accent-2"), _var("surface")
+    assert delta_e(a, b) >= 30
+    assert contraste(a, sup) >= 4.5 and contraste(b, sup) >= 4.5
+    assert "--cal: var(--accent)" in CSS and "--cal: var(--accent-2)" in CSS
+
+
+def test_css_de_la_calibracion_apila_en_celular_no_anima_y_ancla_las_n():
+    bloque = CSS[CSS.index("Gráfica de calibración"):]
+    assert "animation" not in bloque and "@keyframes" not in bloque and "transition" not in bloque  # sin movimiento
+    assert ".lm-calsvg .cal-n.l { text-anchor: end; }" in bloque and ".lm-calsvg .cal-n.m { text-anchor: start; }" in bloque
+    # la rejilla de dos columnas solo desde 700 px: en celular las gráficas se apilan
+    assert re.search(r"\.lm-twocol \{ display: grid; grid-template-columns: 1fr;", CSS)
+    assert re.search(r"@media \(min-width: 700px\) \{ \.lm-twocol \{ grid-template-columns: 1fr 1fr; \} \}", CSS)
+    assert ".lm-calsvg { display: block; width: 100%; height: auto; }" in bloque  # el SVG escala sin scroll horizontal
