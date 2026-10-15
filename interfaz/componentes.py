@@ -8,6 +8,9 @@ from src.grafica import CAL_ALTO, CAL_ANCHO
 
 AVISO_ESCUDOS = ("Los escudos son propiedad de sus respectivos clubes y se usan con fines "
                  "ilustrativos, sin fines de lucro.")
+AUTOR = "Luis Fernando Martínez"
+URL_PERFIL = "https://github.com/luismtz224"
+URL_REPO = "https://github.com/luismtz224/ligamx-match-predictor"
 AVISO_EDUCATIVO = "Proyecto educativo, no es recomendación de apuestas."
 
 # nombre en MEX.csv -> sufijo de --team-<slug> en estilos/custom.css
@@ -86,7 +89,11 @@ def aviso(texto, suave=False):
 
 
 def pie_escudos():
-    return f'<div class="lm-footer">{escape(AVISO_ESCUDOS)}</div>'
+    enlace = '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>'
+    firma = (f'<div class="lm-firma"><span>Hecho por {escape(AUTOR)}</span><span aria-hidden="true">·</span>'
+             f'{enlace.format(escape(URL_PERFIL, quote=True), "GitHub @luismtz224")}'
+             f'<span aria-hidden="true">·</span>{enlace.format(escape(URL_REPO, quote=True), "Código")}</div>')
+    return f'<div class="lm-footer">{escape(AVISO_ESCUDOS)}{firma}</div>'
 
 
 def tarjeta_equipo(equipo, elo, escudo_html, seleccionada=False, nombre=None):

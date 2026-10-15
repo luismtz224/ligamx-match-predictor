@@ -174,6 +174,11 @@ La página de un equipo (`paginas/equipo.py`) se viste con sus colores, sin Java
 - Si el rival no jugó en la temporada elegida: aviso y la gráfica queda con un solo equipo. Los cortes por huecos de más de 365 días aplican a cada línea; la nota dice «de un equipo».
 - Peso: +50 KB con una comparación (Toluca 259 → 309 KB; Atl. San Luis 276 → 314 KB).
 
+## Firma (pie de la app y PNG)
+
+- **Pie** (`componentes.pie_escudos`, `.lm-firma`): bajo el aviso de escudos, «Hecho por Luis Fernando Martínez · GitHub @luismtz224 · Código». El nombre es texto; «GitHub @luismtz224» enlaza al perfil y «Código» al repo. Enlaces con `target="_blank"` y `rel="noopener noreferrer"`, 48 px de alto (`--tap`), color de acento. A ≤ 599 px se ocultan los «·» (un punto suelto al inicio de la segunda línea se ve mal) y `flex-wrap` acomoda los enlaces en dos líneas: medido a 390 px sin scroll horizontal.
+- **PNG**: la URL `ligamx.streamlit.app` va sola, a la derecha de la línea «Predicción del modelo» (24 px, `TENUE`, alineada al margen de 64 px). 1080×1350 sin cambios.
+
 ## Streamlit: qué es frágil
 
 - Selectores `[data-testid]` y `[data-baseweb]` del bloque «Adaptación a Streamlit» del CSS cambian entre versiones. Probar al actualizar.

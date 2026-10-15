@@ -27,7 +27,8 @@ ACENTO = "#2dd4bf"
 EMPATE = "#9a9ab4"
 RESULTADO = {"V": "#34d399", "E": "#9a9ab4", "D": "#f87171"}
 SOBRE_ESTADO = "#0a0a12"
-PIE = ("Predicción del modelo · ligamx.streamlit.app",
+URL_DEMO = "ligamx.streamlit.app"
+PIE = ("Predicción del modelo",
        "Proyecto educativo, no es recomendación de apuestas")
 
 
@@ -174,6 +175,7 @@ def generar_png(local, visita, pct, colores, escudo_local, escudo_visita, forma=
 
     d.line((M, 1240, der, 1240), fill=LINEA, width=2)
     _texto(d, (M, 1284), PIE[0], 28, TENUE)
+    _texto(d, (der, 1284), URL_DEMO, 24, TENUE, ancla="rs")
     _texto(d, (M, 1320), PIE[1], 28, TENUE)
 
     buf = io.BytesIO()
