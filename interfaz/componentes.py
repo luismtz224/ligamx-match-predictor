@@ -4,9 +4,13 @@ Todo texto que viene de datos pasa por html.escape."""
 from html import escape
 
 from src.formato import con_signo, fecha_corta, mes_anio
+from src.grafica import CAL_ALTO, CAL_ANCHO
 
 AVISO_ESCUDOS = ("Los escudos son propiedad de sus respectivos clubes y se usan con fines "
                  "ilustrativos, sin fines de lucro.")
+AUTOR = "Luis Fernando Martínez"
+URL_PERFIL = "https://github.com/luismtz224"
+URL_REPO = "https://github.com/luismtz224/ligamx-match-predictor"
 AVISO_EDUCATIVO = "Proyecto educativo, no es recomendación de apuestas."
 
 # nombre en MEX.csv -> sufijo de --team-<slug> en estilos/custom.css
@@ -85,7 +89,11 @@ def aviso(texto, suave=False):
 
 
 def pie_escudos():
-    return f'<div class="lm-footer">{escape(AVISO_ESCUDOS)}</div>'
+    enlace = '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>'
+    firma = (f'<div class="lm-firma"><span>Hecho por {escape(AUTOR)}</span><span aria-hidden="true">·</span>'
+             f'{enlace.format(escape(URL_PERFIL, quote=True), "GitHub @luismtz224")}'
+             f'<span aria-hidden="true">·</span>{enlace.format(escape(URL_REPO, quote=True), "Código")}</div>')
+    return f'<div class="lm-footer">{escape(AVISO_ESCUDOS)}{firma}</div>'
 
 
 def tarjeta_equipo(equipo, elo, escudo_html, seleccionada=False, nombre=None):
@@ -313,24 +321,60 @@ def resumen_elo(nombre, ext):
             f"máximo {ex:,.0f} ({fecha_corta(fx)}); mínimo {en:,.0f} ({fecha_corta(fn)})")
 
 
-def grafica_elo(equipo, nombre, geo, ext, etiqueta_final="Hoy"):
+def _items_resumen(ext, etiqueta_final):
+    items = (("Máximo", ext["maximo"]), ("Mínimo", ext["minimo"]), ("Inicio", ext["inicio"]),
+             (etiqueta_final, ext["final"]))
+    return "".join(f'<div><dt>{escape(t)}</dt><dd>{e:,.0f}<small>{escape(fecha_corta(f))}</small></dd></div>'
+                   for t, (f, e) in items)
+
+
+def _marcas(geo, clase):
+    return "".join(f'<circle class="{clase}" cx="{p["x"]}" cy="{p["y"]}" r="5"></circle>'
+                   for p in geo["puntos"])
+
+
+def grafica_elo(equipo, nombre, geo, ext, etiqueta_final="Hoy", comp=None, escudo=""):
     """Gráfica del Elo a partir de `src.grafica.geometria` y `historial.extremos`.
-    Sin geometría (sin partidos en el filtro): aviso. El resumen visible repite el aria-label."""
+    Sin geometría (sin partidos en el filtro): aviso. El resumen visible repite el aria-label.
+
+    `comp` (dict con equipo, nombre, geo, ext, etiqueta_final, color y escudo) agrega la línea de otro
+    equipo en la misma escala (`grafica.geometria_comparada`); `escudo` es el del primero, para la
+    leyenda. Sin `comp` el HTML es el de siempre."""
     if geo is None:
         return aviso("Sin partidos en esta temporada.", suave=True)
-    marcas = "".join(f'<circle class="pt" cx="{p["x"]}" cy="{p["y"]}" r="5"></circle>'
-                     for p in geo["puntos"])
+    if comp is not None:
+        return _grafica_comparada(equipo, nombre, geo, ext, etiqueta_final, comp, escudo)
     svg = (f'<svg class="lm-spark" style="--team:{color_equipo(equipo)}" viewBox="0 0 600 220" '
            f'role="img" aria-label="{escape(resumen_elo(nombre, ext))}">'
            f'<path class="gr" d="{geo["rejilla"]}"></path><path class="ar" d="{geo["area"]}"></path>'
-           f'<path class="ln" pathLength="1" d="{geo["linea"]}"></path>{marcas}</svg>')
-    items = (("Máximo", ext["maximo"]), ("Mínimo", ext["minimo"]), ("Inicio", ext["inicio"]),
-             (etiqueta_final, ext["final"]))
-    resumen = "".join(f'<div><dt>{escape(t)}</dt><dd>{e:,.0f}<small>{escape(fecha_corta(f))}</small></dd></div>'
-                      for t, (f, e) in items)
+           f'<path class="ln" pathLength="1" d="{geo["linea"]}"></path>{_marcas(geo, "pt")}</svg>')
     nota = ('<p class="lm-muted" style="margin:8px 0 0;font-size:14px">El trazo se corta donde el '
             'equipo no jugó (más de un año).</p>' if geo["cortes"] else "")
-    return f'<div class="lm-chart">{svg}<dl class="lm-chartsum">{resumen}</dl>{nota}</div>'
+    return (f'<div class="lm-chart">{svg}<dl class="lm-chartsum">{_items_resumen(ext, etiqueta_final)}</dl>'
+            f'{nota}</div>')
+
+
+def _grafica_comparada(equipo, nombre, geo, ext, etiqueta_final, comp, escudo):
+    """Dos líneas del Elo en la misma escala: la del primer equipo (continua, con área) y la del
+    segundo (punteada, sin animación, para no depender solo del color)."""
+    g2 = comp["geo"]
+    aria = f"{resumen_elo(nombre, ext)}. {resumen_elo(comp['nombre'], comp['ext'])}"
+    estilo = f'--team:{color_equipo(equipo)};--team2:{comp["color"]}'  # en el contenedor: lo usan también la leyenda y el resumen
+    svg = (f'<svg class="lm-spark" viewBox="0 0 600 220" role="img" aria-label="{escape(aria)}">'
+           f'<path class="gr" d="{geo["rejilla"]}"></path><path class="ar" d="{geo["area"]}"></path>'
+           f'<path class="ln" pathLength="1" d="{geo["linea"]}"></path>'
+           f'<path class="ln2" d="{g2["linea"]}"></path>{_marcas(geo, "pt")}{_marcas(g2, "pt b")}</svg>')
+    leyenda = "".join(
+        f'<li><span class="lm-key{clase}"></span>{esc}<span>{escape(n)}</span></li>'
+        for clase, esc, n in (("", escudo, nombre), (" b", comp["escudo"], comp["nombre"])))
+    bloques = "".join(
+        f'<div class="lm-chartcmp"><div class="lm-chartcmp__t"><span class="lm-key{clase}"></span>'
+        f'{escape(n)}</div><dl class="lm-chartsum">{_items_resumen(e, et)}</dl></div>'
+        for clase, n, e, et in (("", nombre, ext, etiqueta_final),
+                                (" b", comp["nombre"], comp["ext"], comp["etiqueta_final"])))
+    nota = ('<p class="lm-muted" style="margin:8px 0 0;font-size:14px">El trazo de un equipo se corta '
+            'donde no jugó (más de un año).</p>' if geo["cortes"] or g2["cortes"] else "")
+    return (f'<div class="lm-chart" style="{estilo}"><ul class="lm-claves">{leyenda}</ul>{svg}{bloques}{nota}</div>')
 
 
 def _num(x):
@@ -399,3 +443,102 @@ def clasicos(lista):
             f'<div class="lm-muted" style="font-size:14px">{texto_n} · G-E-P {int(k["g"])}-{int(k["e"])}-{int(k["p"])}'
             f'</div></div></div>{ultimo}{nota}</div>')
     return f'<div class="lm-twocol">{"".join(out)}</div>'
+
+
+# ===== Gráfica de calibración =====
+def leyenda_calibracion():
+    """Qué es cada marca: forma y color (la forma distingue las series sin depender del color)."""
+    def marca(clase, forma):
+        return f'<svg class="cal-clave {clase}" viewBox="0 0 16 16" aria-hidden="true">{forma}</svg>'
+    items = [(marca("l", '<circle cx="8" cy="8" r="5"></circle>'), "Regresión logística"),
+             (marca("m", '<rect x="3" y="3" width="10" height="10"></rect>'), "Mercado (momios)"),
+             (marca("d", '<path d="M1 15 L15 1"></path>'), "Calibración perfecta")]
+    return ('<div class="lm-cal-leyenda">' + "".join(f"<span>{svg}{escape(t)}</span>" for svg, t in items) + "</div>")
+
+
+def grafica_calibracion(titulo, geo, aria, resumenes, ayuda, detalle=""):
+    """Un diagrama de confiabilidad. `geo` = src.grafica.geometria_calibracion; `aria` = descripción para lectores de
+    pantalla; `resumenes` = [(nombre de la serie, clase, texto del resumen)] visible debajo; `ayuda` = el texto de
+    los ejes; `detalle` = HTML del <details> con los números de cada punto. Cada punto lleva su n escrito (la de la logística a su izquierda, la del mercado a su derecha)."""
+    ejes = "".join(f'<text class="cal-t {e["eje"]}" x="{e["x"]}" y="{e["y"]}">{escape(e["texto"])}</text>'
+                   for e in geo["etiquetas"])
+    capas = ""
+    for nombre, clase, forma in (("logistica", "l", "circulo"), ("mercado", "m", "cuadrado")):
+        serie = geo["series"].get(nombre)
+        if not serie:
+            continue
+        marcas = ""
+        for p in serie["puntos"]:
+            if forma == "circulo":
+                marcas += f'<circle class="cal-p {clase}" cx="{p["x"]}" cy="{p["y"]}" r="{p["r"]}"></circle>'
+                x_n = round(p["x"] - p["r"] - 3, 1)  # la n de la logística, a la izquierda del punto
+            else:
+                marcas += (f'<rect class="cal-p {clase}" x="{round(p["x"] - p["r"], 1)}" y="{round(p["y"] - p["r"], 1)}" '
+                           f'width="{round(2 * p["r"], 1)}" height="{round(2 * p["r"], 1)}"></rect>')
+                x_n = round(p["x"] + p["r"] + 3, 1)  # la del mercado, a la derecha: no se encima con la otra serie
+            marcas += f'<text class="cal-n {clase}" x="{x_n}" y="{round(p["y"] + 4, 1)}">{p["n"]}</text>'
+        capas += f'<path class="cal-ic {clase}" d="{serie["ic"]}"></path>{marcas}'
+    svg = (f'<svg class="lm-calsvg" viewBox="0 0 {CAL_ANCHO} {CAL_ALTO}" role="img" aria-label="{escape(aria)}">'
+           f'<path class="gr" d="{geo["rejilla"]}"></path><path class="cal-diag" d="{geo["diagonal"]}"></path>'
+           f'{ejes}{capas}</svg>')
+    filas = "".join(f'<div><dt class="{escape(clase)}">{escape(nombre)}</dt><dd>{escape(texto)}</dd></div>'
+                    for nombre, clase, texto in resumenes)
+    return (f'<figure class="lm-cal"><div class="lm-caption">{escape(titulo)}</div>{svg}'
+            f'<p class="lm-muted lm-cal-ayuda" style="margin:0;font-size:12px;line-height:16px">{escape(ayuda)}</p><dl class="lm-cal-res">{filas}</dl>{detalle}</figure>')
+
+
+def detalle_calibracion(titulo, grupos):
+    """Detalle de cada punto (n, predicha, real e intervalo) en un <details>, sin tabla ancha.
+    `grupos` = [(nombre de la serie, clase, [dict n, pred, freq, lo, hi])] con porcentajes ya redondeados (texto)."""
+    cuerpo = ""
+    for nombre, clase, filas in grupos:
+        lineas = "".join(
+            f'<div class="lm-duel"><div>Grupo {i}<small>n = {escape(str(f["n"]))} partidos · dio {escape(f["pred"])} · '
+            f'pasó {escape(f["freq"])} (entre {escape(f["lo"])} y {escape(f["hi"])})</small></div></div>'
+            for i, f in enumerate(filas, start=1))
+        cuerpo += f'<div class="lm-cal-grupo"><div class="lm-caption {escape(clase)}">{escape(nombre)}</div>{lineas}</div>'
+    return (f'<details class="lm-detail lm-cal-detalle"><summary><span style="font-size:14px;line-height:24px;font-weight:600">{escape(titulo)}</span>'
+            f'<span class="lm-detail__hint">Ver los números</span></summary>{cuerpo}</details>')
+
+
+# ===== Temporadas =====
+GANA = {"H": "gana local", "D": "empate", "A": "gana visitante"}  # resultado -> texto para lectores de pantalla
+
+
+def resumen_temporada(res, nombres):
+    """Dos tarjetas (regresión logística y momios) con los partidos, los aciertos, el accuracy y el log loss de
+    una temporada, calculados como en la tabla del README (accuracy con 2 decimales, log loss con 4).
+    `res` = src.resumen_temporada.resumen(...) y `nombres` = {modelo: nombre para mostrar}."""
+    tarjetas = []
+    for modelo, r in res.items():
+        dl = "".join(f"<dt>{escape(k)}</dt><dd>{escape(v)}</dd>" for k, v in (
+            ("Partidos", f"{r['partidos']:,}"), ("Aciertos", f"{r['aciertos']:,} de {r['partidos']:,}"),
+            ("Accuracy", f"{r['accuracy'] * 100:.2f}%"), ("Log loss", f"{r['log_loss']:.4f}")))
+        tarjetas.append(f'<div class="lm-record"><div class="lm-caption">{escape(nombres[modelo])}</div><dl>{dl}</dl></div>')
+    return f'<div class="lm-twocol keep" style="margin-bottom:16px">{"".join(tarjetas)}</div>'
+
+
+def tarjeta_partido(fecha, local, visitante, goles, pct, pred, real):
+    """Un partido como tarjeta (sin escudos: la lista no se infla). `local` y `visitante` son (llave del equipo,
+    nombre para mostrar, siglas); `goles` = (local, visitante); `pct` = {H, D, A} enteros que suman 100; `pred` y
+    `real` = resultado más probable del modelo y el que pasó (H, D o A). Acierto o fallo va con texto e ícono (no
+    solo con color) y el color del equipo solo va en el borde de sus siglas, nunca en texto. «L · E · V» se lee
+    completo para lectores de pantalla."""
+    ok = pred == real
+    equipos = "".join(
+        f'<div class="lm-m__eq"><span class="lm-sig" style="--team:{color_equipo(llave)}">{escape(sig)}</span>'
+        f'<span>{escape(nombre)}</span><b>{int(g)}</b></div>'
+        for (llave, nombre, sig), g in zip((local, visitante), goles))
+    modelo = " · ".join((f"<b>{pct[r]} % {letra}</b>" if r == pred else f"{pct[r]} % {letra}")
+                        for r, letra in (("H", "L"), ("D", "E"), ("A", "V")))
+    leido = (f"Modelo: local {pct['H']} por ciento, empate {pct['D']} por ciento, visitante {pct['A']} por ciento. "
+             f"{'Acierto' if ok else 'Fallo'}: el modelo predijo {GANA[pred]} y pasó {GANA[real]}.")
+    tag = "✓ Acierto" if ok else "✕ Fallo"
+    return (f'<article class="lm-m {"ok" if ok else "fallo"}"><div class="lm-m__top"><span>{escape(fecha)}</span>'
+            f'<span class="lm-m__tag">{tag}</span></div>{equipos}'
+            f'<div class="lm-m__mod"><span class="lm-sr">{escape(leido)}</span>'
+            f'<span aria-hidden="true">Modelo: {modelo}</span></div></article>')
+
+
+def lista_partidos(tarjetas):
+    return f'<div class="lm-ms">{"".join(tarjetas)}</div>'

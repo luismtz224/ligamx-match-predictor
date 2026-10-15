@@ -75,13 +75,17 @@ python -m src.evaluacion
 python -m pytest -q
 ```
 
-Son 180 pruebas automáticas: Elo y que no se cuele información del futuro, las temporadas de la evaluación, el bootstrap, la calibración, los datos de los equipos, el historial, la gráfica y la interfaz, incluidas las páginas de la app.
+Son 415 pruebas automáticas: Elo y que no se cuele información del futuro, las temporadas de la evaluación, el bootstrap, la calibración, los datos de los equipos, el historial, la gráfica y la interfaz, incluidas las páginas de la app.
 
 Si lo quieres publicar en [Streamlit Community Cloud](https://streamlit.io/cloud), en las opciones avanzadas elige Python 3.13 (3.12 también funciona). `requirements.txt` solo trae lo que usa la app; lo demás (XGBoost, Jupyter, pytest...) está en `requirements-dev.txt`.
 
 ## Más detalle
 
 Los intervalos de confianza, la calibración de probabilidades y la metodología completa están en [docs/metodologia.md](docs/metodologia.md).
+
+## Seguridad
+
+La app no guarda datos de usuarios ni usa secretos. Todo texto que viene de archivos o de la URL se escapa antes de mostrarse (`html.escape`), y un `?equipo=` inválido se ignora y vuelve a la rejilla sin reflejar el valor. Los momios se validan (números entre 1.01 y 1000). Las dependencias se revisaron con `pip-audit` y no tienen vulnerabilidades conocidas, y las pruebas incluyen entradas hostiles y un barrido del repo en busca de secretos.
 
 ## Stack
 

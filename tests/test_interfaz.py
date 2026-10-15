@@ -568,3 +568,184 @@ def test_css_sin_contadores_ni_property_para_el_porcentaje():
     """Los contadores CSS con @property (--lm-n) no se actualizaban en Safari: el número es texto real."""
     assert "@property" not in CSS and "counter-reset" not in CSS and "counter(" not in CSS
     assert "lm-count" not in CSS and "lm-pct::after" not in CSS
+
+
+# ===== Fase A: componentes de la gráfica de calibración =====
+from src.grafica import geometria_calibracion as _geo_cal  # noqa: E402
+from src.resumen_calibracion import (CLASE as _CLASE, FUENTES as _FUENTES, NOMBRE_FUENTE as _NF,  # noqa: E402
+                                     filas_detalle as _filas, resumen as _resumen, resumen_serie as _rs, serie as _serie,
+                                     texto_aria as _aria_cal)
+
+
+def _figura_cal(resultado="local", titulo="Gana local", ayuda="Ayuda", aria=None, con_detalle=True):
+    t = pd.read_csv(RAIZ / "datos" / "procesados" / "calibracion.csv")
+    geo = _geo_cal({f: _serie(t, f, resultado) for f in _FUENTES})
+    res = [(_NF[f], _CLASE[f], _rs(_resumen(t, f, resultado))) for f in _FUENTES]
+    detalle = c.detalle_calibracion("Cada punto, con su n", [(_NF[f], _CLASE[f], _filas(t, f, resultado))
+                                                              for f in _FUENTES]) if con_detalle else ""
+    return c.grafica_calibracion(titulo, geo, aria or _aria_cal(t, resultado), res, ayuda, detalle), t
+
+
+def test_grafica_calibracion_una_linea_con_aria_y_sin_scripts():
+    h, _ = _figura_cal()
+    _sin_sangria(h)
+    assert h.count("<svg") == 1 and 'role="img"' in h and 'aria-label="Gana local. Diagrama de calibración' in h
+    assert "<script" not in h and "onclick" not in h and "<title" not in h  # sin tooltips ni JavaScript
+    assert 'viewBox="0 0 360 340"' in h and h.startswith('<figure class="lm-cal">') and h.endswith("</figure>")
+
+
+def test_cada_punto_muestra_su_n_y_las_series_tienen_formas_distintas():
+    h, t = _figura_cal()
+    assert h.count('class="cal-p l"') == 6 and h.count('class="cal-p m"') == 6
+    assert h.count("<circle") == 6 and h.count("<rect") == 6  # logística: círculos; mercado: cuadrados
+    ns = re.findall(r'<text class="cal-n ([lm])" x="[\d.]+" y="[\d.]+">(\d+)</text>', h)
+    assert len(ns) == 12
+    esperado = {f: [int(n) for n in _serie(t, f, "local")["n"]] for f in _FUENTES}
+    assert [int(n) for k, n in ns if k == "l"] == esperado["logistica"]
+    assert [int(n) for k, n in ns if k == "m"] == esperado["mercado"]
+    # la n de la logística queda a la izquierda de su punto y la del mercado a la derecha
+    xs_l = [float(x) for x in re.findall(r'<circle class="cal-p l" cx="([\d.]+)"', h)]
+    xt_l = [float(x) for x in re.findall(r'<text class="cal-n l" x="([\d.]+)"', h)]
+    xs_m = [float(x) + float(w) / 2 for x, w in re.findall(r'<rect class="cal-p m" x="([\d.]+)" y="[\d.]+" width="([\d.]+)"', h)]
+    xt_m = [float(x) for x in re.findall(r'<text class="cal-n m" x="([\d.]+)"', h)]
+    assert all(a < b for a, b in zip(xt_l, xs_l)) and all(a > b for a, b in zip(xt_m, xs_m))
+
+
+def test_grafica_calibracion_resumen_visible_y_ayuda_en_texto():
+    h, _ = _figura_cal(ayuda="Horizontal: lo que dio el modelo")
+    assert "Horizontal: lo que dio el modelo" in h
+    assert h.count("<dt") == 2 and "error promedio (ECE) de 1.1 puntos, dentro del ruido esperado" in h
+    assert "error promedio (ECE) de 3.2 puntos, por encima del ruido esperado" in h
+    assert '<dt class="l">Regresión logística</dt>' in h and '<dt class="m">Mercado (momios)</dt>' in h
+
+
+def test_grafica_calibracion_escapa_el_texto():
+    h, _ = _figura_cal(titulo=PELIGRO, ayuda=PELIGRO, aria=PELIGRO)
+    assert PELIGRO not in h and h.count(escape(PELIGRO)) == 3
+    t = pd.read_csv(RAIZ / "datos" / "procesados" / "calibracion.csv")
+    d = c.detalle_calibracion(PELIGRO, [(PELIGRO, "l", _filas(t, "logistica", "local")[:1])])
+    assert PELIGRO not in d and escape(PELIGRO) in d
+    _sin_sangria(d)
+
+
+def test_detalle_calibracion_lista_n_dio_y_paso_de_cada_grupo():
+    h, _ = _figura_cal()
+    assert h.count("<details") == 1 and "Ver los números" in h
+    assert h.count('class="lm-duel"') == 12  # 6 grupos x 2 series
+    assert "n = 442 partidos · dio 25.7% · pasó 26.0% (entre 22.1% y 30.3%)" in h
+    assert "<table" not in h  # sin tablas anchas
+    sin, _ = _figura_cal(con_detalle=False)
+    assert "<details" not in sin
+
+
+def test_leyenda_calibracion_distingue_por_forma_y_color():
+    h = c.leyenda_calibracion()
+    _sin_sangria(h)
+    assert h.count("<svg") == 3 and h.count('aria-hidden="true"') == 3  # decorativos: el texto va al lado
+    assert "<circle" in h and "<rect" in h and "<path" in h
+    for t in ("Regresión logística", "Mercado (momios)", "Calibración perfecta"):
+        assert t in h
+
+
+def test_colores_de_la_calibracion_se_distinguen_y_se_leen():
+    """Logística (--accent) y mercado (--accent-2): ΔE >= 30 entre sí y contraste >= 4.5:1 sobre --surface
+    (los usa como texto: la n y el nombre de la serie). Además la forma (círculo / cuadrado) los distingue."""
+    from src.formato import delta_e
+    a, b, sup = _var("accent"), _var("accent-2"), _var("surface")
+    assert delta_e(a, b) >= 30
+    assert contraste(a, sup) >= 4.5 and contraste(b, sup) >= 4.5
+    assert "--cal: var(--accent)" in CSS and "--cal: var(--accent-2)" in CSS
+
+
+def test_css_de_la_calibracion_apila_en_celular_no_anima_y_ancla_las_n():
+    bloque = CSS[CSS.index("Gráfica de calibración"):]
+    assert "animation" not in bloque and "@keyframes" not in bloque and "transition" not in bloque  # sin movimiento
+    assert ".lm-calsvg .cal-n.l { text-anchor: end; }" in bloque and ".lm-calsvg .cal-n.m { text-anchor: start; }" in bloque
+    # la rejilla de dos columnas solo desde 700 px: en celular las gráficas se apilan
+    assert re.search(r"\.lm-twocol \{ display: grid; grid-template-columns: 1fr;", CSS)
+    assert re.search(r"@media \(min-width: 700px\) \{ \.lm-twocol \{ grid-template-columns: 1fr 1fr; \} \}", CSS)
+    assert ".lm-calsvg { display: block; width: 100%; height: auto; }" in bloque  # el SVG escala sin scroll horizontal
+
+
+# ===== Fase B: tarjetas de partido y resumen de la temporada =====
+def _partido(pred="H", real="H", pct=None, local=("Club America", "Club América", "AME"),
+             visita=("Cruz Azul", "Cruz Azul", "CAZ"), goles=(2, 1), fecha="13 sep 2026"):
+    return c.tarjeta_partido(fecha, local, visita, goles, pct or {"H": 52, "D": 27, "A": 21}, pred, real)
+
+
+def test_tarjeta_partido_una_linea_con_fecha_siglas_nombres_y_marcador():
+    h = _partido()
+    _sin_sangria(h)
+    assert h.startswith('<article class="lm-m ok">') and h.endswith("</article>")
+    assert "13 sep 2026" in h and ">AME<" in h and ">CAZ<" in h and ">Club América<" in h and ">Cruz Azul<" in h
+    assert re.findall(r"<b>(\d+)</b>", h) == ["2", "1"]  # marcador: local y luego visitante
+    assert "<img" not in h and "lm-crest" not in h  # sin escudos: la lista no se infla
+    assert "<table" not in h and "<script" not in h
+
+
+def test_tarjeta_partido_acierto_o_fallo_con_texto_e_icono_no_solo_color():
+    ok, mal = _partido(pred="H", real="H"), _partido(pred="H", real="D")
+    assert 'class="lm-m ok"' in ok and "✓ Acierto" in ok and "Fallo" not in ok.replace("Fallo:", "")
+    assert 'class="lm-m fallo"' in mal and "✕ Fallo" in mal and "✓ Acierto" not in mal
+    assert "Acierto: el modelo predijo gana local y pasó gana local." in ok
+    assert "Fallo: el modelo predijo gana local y pasó empate." in mal
+    assert "predijo gana visitante y pasó gana local" in _partido(pred="A", real="H")
+
+
+def test_tarjeta_partido_muestra_el_modelo_con_el_resultado_predicho_en_negritas():
+    h = _partido(pred="D", real="D", pct={"H": 52, "D": 27, "A": 21})
+    assert 'Modelo: 52 % L · <b>27 % E</b> · 21 % V' in h.replace("</span><span", "<span")
+    assert h.count("<b>") == 3  # los 2 goles y el resultado predicho
+    # para lectores de pantalla: el texto completo y lo visual escondido
+    assert '<span class="lm-sr">Modelo: local 52 por ciento, empate 27 por ciento, visitante 21 por ciento.' in h
+    assert '<span aria-hidden="true">Modelo:' in h
+
+
+def test_tarjeta_partido_el_color_del_equipo_solo_va_en_el_borde_de_sus_siglas():
+    h = _partido()
+    assert 'class="lm-sig" style="--team:var(--team-america)">AME<' in h
+    assert 'style="--team:var(--team-cruz-azul)">CAZ<' in h
+    assert h.count('style="--team:') == 2 and "color:" not in h  # solo las 2 siglas llevan el color; nunca texto (Chiapas 3.0:1)
+    # en el CSS, --team solo pinta el borde de la sigla
+    regla = _regla(".lm-sig")
+    assert "border: 2px solid var(--team" in regla and "color: var(--ink)" in regla
+    ch = _partido(local=("Chiapas", "Chiapas", "CHI"))
+    assert "--team-chiapas" in ch
+
+
+def test_tarjeta_partido_escapa_el_texto_de_datos():
+    h = c.tarjeta_partido(PELIGRO, (PELIGRO, PELIGRO, PELIGRO), (PELIGRO, PELIGRO, PELIGRO), (1, 0),
+                          {"H": 40, "D": 30, "A": 30}, "H", "H")
+    assert PELIGRO not in h and escape(PELIGRO) in h
+    _sin_sangria(h)
+
+
+def test_resumen_temporada_con_los_formatos_del_readme():
+    res = {"logistica": dict(partidos=336, aciertos=177, accuracy=177 / 336, log_loss=0.99823),
+           "mercado": dict(partidos=336, aciertos=179, accuracy=179 / 336, log_loss=0.97741)}
+    h = c.resumen_temporada(res, {"logistica": "Regresión logística", "mercado": "Momios (mercado)"})
+    _sin_sangria(h)
+    assert "<dd>336</dd>" in h and "<dd>177 de 336</dd>" in h and "<dd>52.68%</dd>" in h and "<dd>0.9982</dd>" in h
+    assert "<dd>53.27%</dd>" in h and "<dd>0.9774</dd>" in h  # accuracy con 2 decimales y log loss con 4, como el README
+    assert h.count('class="lm-record"') == 2 and "Regresión logística" in h and "Momios (mercado)" in h
+
+
+def test_lista_de_partidos_en_una_rejilla_de_una_columna_y_dos_desde_700px():
+    assert c.lista_partidos(["<article></article>"] * 2) == '<div class="lm-ms"><article></article><article></article></div>'
+    assert re.search(r"\.lm-ms \{ display: grid; grid-template-columns: 1fr;", CSS)
+    assert re.search(r"@media \(min-width: 700px\) \{ \.lm-ms \{ grid-template-columns: 1fr 1fr;", CSS)
+    assert "min-width: 0" in _regla(".lm-m")  # las tarjetas no ensanchan la página
+
+
+def test_css_de_las_tarjetas_y_las_pastillas():
+    bloque = CSS[CSS.index("Temporadas (tarjetas de partido)"):]
+    assert "animation" not in bloque and "transition" not in bloque  # sin movimiento
+    assert "color: var(--team" not in bloque  # el color del equipo nunca pinta texto
+    for t in ("--win", "--loss"):
+        assert t in _regla(".lm-m.ok") + _regla(".lm-m.fallo") + bloque
+    # el texto de la etiqueta se lee sobre su fondo (24 % del color sobre la superficie)
+    for var in ("win", "loss"):
+        assert contraste(_var("ink"), _mezcla(_var(var), _var("surface"), 24)) >= 7, var
+    # pastillas de 48 px de alto táctil
+    assert '[data-testid="stButtonGroup"] button { min-height: var(--tap); }' in CSS
+    assert re.search(r"\.lm-sr \{[^}]*clip: rect\(0 0 0 0\)", CSS)  # texto solo para lectores de pantalla

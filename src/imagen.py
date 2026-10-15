@@ -11,6 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from src.formato import contraste
+from src.huella import huella
 
 RUTA_FUENTE = Path(__file__).resolve().parent.parent / "assets" / "fuentes" / "SourceSans3VF-Upright.woff2"
 
@@ -26,15 +27,21 @@ ACENTO = "#2dd4bf"
 EMPATE = "#9a9ab4"
 RESULTADO = {"V": "#34d399", "E": "#9a9ab4", "D": "#f87171"}
 SOBRE_ESTADO = "#0a0a12"
-PIE = ("Predicción del modelo · ligamx.streamlit.app",
+URL_DEMO = "ligamx.streamlit.app"
+PIE = ("Predicción del modelo",
        "Proyecto educativo, no es recomendación de apuestas")
 
 
 @lru_cache(maxsize=64)
-def _fuente(tam, peso):
+def _fuente_cacheada(tam, peso, contenido):
     f = ImageFont.truetype(str(RUTA_FUENTE), tam)
     f.set_variation_by_axes([peso])
     return f
+
+
+def _fuente(tam, peso):
+    """Fuente de ese tamaño y peso; si el archivo de la fuente cambia, se vuelve a cargar."""
+    return _fuente_cacheada(tam, peso, huella(RUTA_FUENTE))
 
 
 def _texto(d, xy, txt, tam, color=TEXTO, peso=400, ancla="ls", ancho_max=None):
@@ -168,6 +175,7 @@ def generar_png(local, visita, pct, colores, escudo_local, escudo_visita, forma=
 
     d.line((M, 1240, der, 1240), fill=LINEA, width=2)
     _texto(d, (M, 1284), PIE[0], 28, TENUE)
+    _texto(d, (der, 1284), URL_DEMO, 24, TENUE, ancla="rs")
     _texto(d, (M, 1320), PIE[1], 28, TENUE)
 
     buf = io.BytesIO()

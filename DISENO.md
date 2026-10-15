@@ -6,18 +6,23 @@ Referencia para implementar el frontend en Streamlit. El CSS está en `estilos/c
 
 ```python
 # interfaz/recursos.py
-from pathlib import Path
 import streamlit as st
+from src.huella import huella
 
 @st.cache_resource
+def _css(contenido: str) -> str:  # `contenido` = huella del archivo: es la llave de la caché
+    return RUTA_CSS.read_text(encoding="utf-8")
+
 def css() -> str:
-    return (Path(__file__).resolve().parent.parent / "estilos" / "custom.css").read_text(encoding="utf-8")
+    return _css(huella(RUTA_CSS))
 
 def inyectar_css() -> None:
     st.markdown(f"<style>{css()}</style>", unsafe_allow_html=True)
 ```
 
 Llamar `inyectar_css()` una vez por página, al inicio. Si `st.navigation` repinta, llamarlo en `app.py` antes de `pg.run()`.
+
+**Cachés y despliegues.** En Cloud un `git push` recarga el código de las páginas pero no vacía `st.cache_resource` ni `st.cache_data`: con `css()` sin argumentos se veía HTML nuevo con CSS viejo. Toda función cacheada que lea un archivo (CSS, `modelo.joblib`, los CSV, los escudos, la fuente) recibe como argumento la huella del archivo (`src.huella.huella`, hash del contenido; el argumento no debe llevar guion bajo porque esos no entran a la llave). Lo hacen `css`, `colores_css`, `modelo`, `partidos`, `equipos`, `rivalidades`, `escudo_b64`, la fuente del PNG y `_png` (su llave es `huella_png`: modelo, partidos, CSS, fichas, escudos y fuente). Una prueba (`tests/test_cache_archivos.py`) recorre el código y falla si una función con `@st.cache_*` no recibe `contenido` o `recursos`. No se cubre `.streamlit/config.toml` (lo lee Streamlit al arrancar: requiere reinicio de la app).
 
 ## Reglas
 
@@ -138,6 +143,41 @@ La página de un equipo (`paginas/equipo.py`) se viste con sus colores, sin Java
 - Cada tarjeta y fila: `st.container(key="tarjeta-<slug>" / "fila-<slug>")` con el HTML y un `st.page_link` transparente encima (`st-key-*` y la etiqueta `a`).
 - **El overlay debe cubrir toda la tarjeta o fila.** Streamlit pone `position: relative` y `margin: -6px` (arriba y abajo) al contenedor (`stElementContainer`) del `page_link`, que mide 16 × 0 px. Ese contenedor era el bloque contenedor del overlay `inset: 0`: el enlace medía 16 × 0 px, el clic caía en el texto y solo lo seleccionaba (se vio en producción). Con solo `position: static` quedaban sin enlace las esquinas de abajo (−12 px de márgenes). En `custom.css` el contenedor del enlace es `position: static; margin: 0`, el `a` lleva `margin: 0` (Streamlit le pone 2 px) y tarjetas y filas llevan `user-select: none`. Se prueba con clics de ratón reales (`tests/test_clic_real.py`: `document.elementFromPoint` en 7 puntos y un clic real en la esquina inferior, a 390 y 1280 px), no con `element.click()`, que ignora la geometría.
 - Costo conocido: dentro de un equipo el menú lateral no resalta «Equipos» (la página oculta no está en la lista).
+
+## Gráfica de calibración (Sobre el modelo)
+
+- **Datos:** `datos/procesados/calibracion.csv`, versionado en git (Cloud solo ve lo que está en git). Lo genera `python -m src.exportar_calibracion` con el walk-forward y las funciones de `src/calibracion.py`; la app solo lo lee (`recursos.calibracion()`, con huella) y no importa matplotlib ni xgboost. 24 filas = 2 fuentes (logística y mercado) × 2 resultados (local y visitante) × 6 grupos de ~442 partidos. Si el archivo falta, la página muestra un aviso suave y sigue.
+- **Geometría** pura en `src/grafica.py` (`geometria_calibracion`): SVG de 360 × 340, cuadro de 300 × 300 con el mismo rango en los dos ejes (redondeado hacia afuera a múltiplos de 5 %), diagonal punteada = calibración perfecta y barras de incertidumbre (Wilson 95 %) con remates. Componentes: `leyenda_calibracion`, `grafica_calibracion` y `detalle_calibracion`; los textos salen de `src/resumen_calibracion.py`.
+- **Codificación:** logística = círculo y `--accent`; mercado = cuadrado y `--accent-2` (forma y color: ΔE ≥ 30 y contraste ≥ 4.5:1 sobre `--surface`, con prueba). El radio crece con √n (con grupos parejos todos miden lo mismo). **Cada punto lleva su n escrito**, la logística a su izquierda y el mercado a su derecha (así no se encima con la otra serie), porque con pocos partidos por grupo la gráfica engaña. Una frase simple lo explica (`frase_n`): n es cuántos partidos son; con pocos, la frecuencia real salta por pura suerte, y por eso cada punto lleva su barra.
+- **Texto:** la conclusión se genera desde las banderas `sobre_ruido` del CSV, no está escrita a mano. Es la honesta: la logística no muestra descalibración ni en «gana local» ni en «gana visitante»; el mercado queda descalibrado en «gana local» **con esta conversión de momios** (dividir cada momio entre la suma), y que la conversión influya es una hipótesis («probablemente»), no un hecho; y estar dentro del ruido no prueba calibración perfecta.
+- **Layout:** las dos figuras van en `.lm-twocol`: apiladas por debajo de 700 px y en dos columnas desde 700 px; el SVG es `width: 100%` (sin scroll horizontal a 390 ni a 1280 px). Sin animación (no hay nada que `prefers-reduced-motion` apagar) y sin tooltips.
+- **Accesibilidad:** `role="img"` con `aria-label` (`texto_aria`: ejes, series, n y ECE), resumen visible por serie (error promedio y ruido esperado) y un `<details>` por gráfica con n, lo que dio el modelo, lo que pasó y su intervalo en cada punto (lista, sin tabla ancha; el `summary` mide 48 px).
+- **Frágil:** Streamlit pisa el `font-size` de los `<p>` y del `summary` dentro de markdown: esos tamaños van en estilo en línea (como en otros componentes).
+
+## Temporadas (resumen y lista de partidos)
+
+- **Datos:** `datos/procesados/predicciones_oof.csv`, versionado en git (Cloud solo ve lo que está en git). Lo genera `python -m src.exportar_predicciones` con `oof_walk_forward()` (probabilidades) y `procesar()` (fecha, equipos y goles; verifica que coinciden con las predicciones). 2,651 partidos de las 8 temporadas de prueba (2018/19 a 2025/26; la 2026/27 está en curso y no entra). La app lo lee con `recursos.predicciones()` (con huella) y no importa xgboost; `src/resumen_temporada.py` hace los cálculos.
+- **Controles:** `st.pills` para la temporada (arranca en la más reciente, `required`) y para el filtro (Todos, Aciertos, Fallos, según la regresión logística). Las pastillas miden 48 px de alto táctil (`[data-testid="stButtonGroup"] button { min-height: var(--tap) }`; Streamlit las pinta de 32).
+- **Resumen:** dos tarjetas `lm-record` (regresión logística y momios) con partidos, aciertos, accuracy (2 decimales) y log loss (4 decimales), calculados igual que la tabla del README: accuracy = el resultado más probable fue el que pasó; log loss = −log de la probabilidad del resultado real, recortada a 1e-15. Una sola temporada son ~340 partidos: se avisa que la diferencia entre modelos probablemente es ruido. El filtro no cambia el resumen (es de toda la temporada).
+- **Lista:** tarjetas `.lm-m` en `.lm-ms` (una columna; dos desde 700 px), **sin tabla ancha y sin escudos** (la lista no se infla: con una temporada completa visible la página pesa ~245 KB con CSS). Cada tarjeta: fecha, etiqueta «✓ Acierto» / «✕ Fallo» (texto e ícono, además del borde izquierdo `--win` / `--loss`; nunca solo color), una fila por equipo con sus siglas (`.lm-sig`, **el color del equipo solo en el borde** de la sigla; el texto va en `--ink`, así Chiapas 3.0:1 no es problema), nombre y goles, y «Modelo: 52 % L · 27 % E · 21 % V» con el resultado que predijo en negritas (porcentajes que suman 100). Para lectores de pantalla la línea del modelo se lee completa («local 52 por ciento…» y si fue acierto o fallo) con `.lm-sr` y lo visual va `aria-hidden`.
+- **Orden y «Ver más»:** por fecha, de la más vieja a la más nueva. Se muestran 20 y «Ver más (20)» agrega otros 20 hasta mostrar todo (el último ofrece los que faltan); debajo, «Mostrando N de M partidos, en orden de fecha». El contador vuelve a 20 al cambiar de temporada **o de filtro**; cambiar de temporada conserva el filtro.
+- **Frágil:** Streamlit pisa el `font-size` de los `<p>` dentro de markdown: la tarjeta usa solo `<div>`/`<span>`. `.lm-sr` es el texto visualmente oculto (`clip: rect(0 0 0 0)`).
+
+## Comparar el Elo con otro equipo (página de un equipo)
+
+- Selector «Comparar con…» (`st.selectbox`, `index=None`, `key="comp-<slug>"`: se reinicia al cambiar de equipo) entre las pastillas de temporada y la gráfica. Los otros 24 equipos por nombre mostrado.
+- Misma escala: `src.grafica.geometria_comparada` calcula un rango de Elo y un eje de tiempo comunes (`geometria` acepta `rango` y `dominio`; sin ellos la salida no cambia). Sin comparación, el HTML de `grafica_elo` es byte por byte el de antes (prueba con hashes).
+- La segunda línea es **punteada** (`.ln2`, `7 5`) y sin animación: no depende solo del color. Sus marcadores son `.pt.b`. El área sombreada es solo del primer equipo.
+- Color del segundo: `recursos.color_comparado`: su `--team-<slug>`, su `-2`, `--ink` y, como último recurso, `--accent`, con ΔE ≥ 30 contra el color del primero (`color_distinto`). De los 600 pares: 508 usan su color, 80 el `-2`, 10 `--ink` y 2 `--accent` (Lobos BUAP contra Mazatlán, los dos blancos sin `-2`: sin el cuarto recurso `--ink` se confundía con ellos).
+- `--team` y `--team2` van en el `style` del `.lm-chart` (no en el `<svg>`) para que la leyenda y los títulos del resumen los hereden.
+- Leyenda `.lm-claves` (no `.lm-legend`, que ya es la del Predictor): muestra de línea (`.lm-key`, continua o punteada), escudo de 24 px y nombre. Resumen: un bloque `.lm-chartcmp` por equipo (máximo, mínimo, inicio, hoy/final). El `aria-label` del SVG trae el resumen de los dos.
+- Si el rival no jugó en la temporada elegida: aviso y la gráfica queda con un solo equipo. Los cortes por huecos de más de 365 días aplican a cada línea; la nota dice «de un equipo».
+- Peso: +50 KB con una comparación (Toluca 259 → 309 KB; Atl. San Luis 276 → 314 KB).
+
+## Firma (pie de la app y PNG)
+
+- **Pie** (`componentes.pie_escudos`, `.lm-firma`): bajo el aviso de escudos, «Hecho por Luis Fernando Martínez · GitHub @luismtz224 · Código». El nombre es texto; «GitHub @luismtz224» enlaza al perfil y «Código» al repo. Enlaces con `target="_blank"` y `rel="noopener noreferrer"`, 48 px de alto (`--tap`), color de acento. A ≤ 599 px se ocultan los «·» (un punto suelto al inicio de la segunda línea se ve mal) y `flex-wrap` acomoda los enlaces en dos líneas: medido a 390 px sin scroll horizontal.
+- **PNG**: la URL `ligamx.streamlit.app` va sola, a la derecha de la línea «Predicción del modelo» (24 px, `TENUE`, alineada al margen de 64 px). 1080×1350 sin cambios.
 
 ## Streamlit: qué es frágil
 

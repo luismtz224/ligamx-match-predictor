@@ -14,7 +14,7 @@ from src.equipos import cargar_equipos
 
 RAIZ = Path(__file__).resolve().parent.parent
 PAGINAS = ["paginas/predictor.py", "paginas/equipos.py", "paginas/ranking.py",
-           "paginas/sobre_modelo.py"]
+           "paginas/sobre_modelo.py", "paginas/temporadas.py"]
 
 
 CON_ENLACES = {"paginas/equipos.py", "paginas/equipo.py", "paginas/ranking.py"}  # usan st.page_link: necesitan st.navigation
@@ -421,3 +421,235 @@ def test_ficha_de_la_pagina_marca_el_palmares_largo():
     html = _eq("toluca")[1]
     assert '<div class="largo"><dt>Palmarés</dt>' in html
     assert '<div><dt>Siglas</dt><dd>TOL</dd></div>' in html  # lo corto sigue en una fila
+
+
+# ===== Fase A: gráfica de calibración en «Sobre el modelo» =====
+def _sobre_el_modelo(csv=None, monkeypatch=None):
+    if csv is not None:
+        from interfaz import recursos as _r
+        monkeypatch.setattr(_r, "RUTA_CALIBRACION", csv)
+    at = AppTest.from_file(str(RAIZ / "app.py"), default_timeout=120).run()
+    at = at.switch_page("paginas/sobre_modelo.py").run()
+    assert not at.exception, [e.value for e in at.exception]
+    return at
+
+
+def test_sobre_el_modelo_tiene_las_dos_graficas_con_su_n_y_su_resumen():
+    at = _sobre_el_modelo()
+    html = _sin_css(at)
+    tabla = pd.read_csv(RAIZ / "datos" / "procesados" / "calibracion.csv")
+    assert html.count('<svg class="lm-calsvg"') == 2 and html.count('role="img"') >= 2
+    assert 'aria-label="Gana local. Diagrama de calibración' in html and 'aria-label="Gana visitante. Diagrama' in html
+    assert ">Gana local<" in html and ">Gana visitante<" in html
+    # cada punto lleva su n: las 24 n del CSV, en el mismo orden (resultados local y visitante; logística y mercado)
+    en_html = re.findall(r'<text class="cal-n [lm]" x="[\d.]+" y="[\d.]+">(\d+)</text>', html)
+    esperado = []
+    for resultado in ("local", "visitante"):
+        for fuente in ("logistica", "mercado"):
+            esperado += [str(n) for n in tabla.query("fuente == @fuente and resultado == @resultado").sort_values("grupo")["n"]]
+    assert sorted(en_html) == sorted(esperado) and len(en_html) == 24
+    # el resumen en texto trae el ECE de cada serie (con los números del CSV)
+    for (fuente, resultado), g in tabla.groupby(["fuente", "resultado"]):
+        assert f"error promedio (ECE) de {g['ece'].iloc[0] * 100:.1f} puntos" in html, (fuente, resultado)
+    assert html.count("<details") >= 2 and html.count('class="lm-duel"') == 24
+    assert "n = 442 partidos · dio 25.7% · pasó 26.0%" in html
+
+
+def test_sobre_el_modelo_explica_n_y_conserva_la_conclusion_honesta():
+    html = _sin_css(_sobre_el_modelo())
+    assert "n es cuántos partidos son" in html and "pura suerte" in html and "unos 441 a 442 partidos" in html
+    assert "no muestra descalibración ni en «gana local» ni en «gana visitante»" in html
+    assert "el mercado queda descalibrado en «gana local»" in html
+    assert "esta conversión de momios" in html and "Probablemente la conversión influya" in html
+    assert "es una hipótesis, no un hecho" in html  # no se afirma como hecho
+    # lo que ya estaba sigue ahí
+    for texto in ("Qué tan bueno es", "1.0037", "Ningún modelo supera al mercado", c.AVISO_EDUCATIVO):
+        assert texto in html, texto
+
+
+def test_sobre_el_modelo_html_en_una_linea_y_peso_razonable():
+    at = _sobre_el_modelo()
+    for m in at.markdown:
+        if m.value.startswith("<style>/*"):
+            continue
+        assert "\n" not in m.value and m.value == m.value.strip(), m.value[:80]
+    peso = sum(len(m.value) for m in at.markdown) / 1024
+    assert peso < 500, f"{peso:.0f} KB"  # regla de Extras: avisar si una página pasa de ~500 KB
+
+
+def test_sobre_el_modelo_sin_el_csv_avisa_y_no_falla(tmp_path, monkeypatch):
+    at = _sobre_el_modelo(tmp_path / "no_esta.csv", monkeypatch)
+    html = _sin_css(at)
+    assert "La gráfica de calibración no está disponible" in html and "lm-calsvg" not in html
+    assert "Qué tan bueno es" in html and "1.0037" in html  # el resto de la página sigue
+
+
+def test_sobre_el_modelo_sigue_al_csv_si_cambia(tmp_path, monkeypatch):
+    """Cambiar una bandera del CSV cambia la conclusión que se muestra (no está escrita a mano)."""
+    ruta = tmp_path / "calibracion.csv"
+    t = pd.read_csv(RAIZ / "datos" / "procesados" / "calibracion.csv")
+    t.to_csv(ruta, index=False)
+    at = _sobre_el_modelo(ruta, monkeypatch)
+    assert "el mercado queda descalibrado en «gana local»" in _sin_css(at)
+    t.loc[(t["fuente"] == "mercado") & (t["resultado"] == "local"), "sobre_ruido"] = False
+    t.to_csv(ruta, index=False)
+    at.run()
+    html = _sin_css(at)
+    assert not at.exception and "el mercado queda descalibrado en «gana local»" not in html
+    assert "el mercado no muestra descalibración ni en «gana local» ni en «gana visitante»" in html
+
+
+# ===== Fase B: página Temporadas =====
+import ast as _ast  # noqa: E402
+
+from src import resumen_temporada as rt  # noqa: E402
+
+PRED = pd.read_csv(RAIZ / "datos" / "procesados" / "predicciones_oof.csv", parse_dates=["fecha"])
+TEMPORADAS_PRED = rt.temporadas(PRED)
+
+
+def _grupo(at, clave):
+    return next(g for g in at.get("button_group") if g.key == clave)
+
+
+def _abrir_temporadas(temporada=None, filtro=None):
+    at = AppTest.from_file(str(RAIZ / "app.py"), default_timeout=120).run()
+    at = at.switch_page("paginas/temporadas.py").run()
+    if temporada:
+        _grupo(at, "temp_sel").set_value(temporada).run()
+    if filtro:
+        _grupo(at, "temp_filtro").set_value(filtro).run()
+    assert not at.exception, [e.value for e in at.exception]
+    return at
+
+
+def _tarjetas(at):
+    """[(clase, fecha)] de las tarjetas visibles, en el orden en que aparecen."""
+    return re.findall(r'<article class="lm-m (ok|fallo)"><div class="lm-m__top"><span>([^<]*)</span>', _sin_css(at))
+
+
+def _mostrando(at):
+    m = re.search(r"Mostrando (\d+) de (\d+) partidos", _sin_css(at))
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def _ver_mas(at):
+    return next((b for b in at.button if b.label.startswith("Ver más")), None)
+
+
+def _todo_visible(at):
+    while _ver_mas(at):
+        _ver_mas(at).click().run()
+    assert not at.exception
+    return at
+
+
+def test_temporadas_esta_en_la_navegacion_como_quinta_pagina_visible():
+    arbol = _ast.parse((RAIZ / "app.py").read_text(encoding="utf-8"))
+    paginas = []
+    for nodo in _ast.walk(arbol):
+        if isinstance(nodo, _ast.Call) and _ast.unparse(nodo.func) == "st.Page":
+            kw = {k.arg: _ast.literal_eval(k.value) for k in nodo.keywords if isinstance(k.value, _ast.Constant)}
+            paginas.append((_ast.literal_eval(nodo.args[0]), kw.get("title"), kw.get("visibility", "visible")))
+    visibles = [(ruta, titulo) for ruta, titulo, vis in paginas if vis == "visible"]
+    assert [t for _, t in visibles] == ["Predictor", "Equipos", "Ranking", "Temporadas", "Sobre el modelo"]
+    assert ("paginas/temporadas.py", "Temporadas") in visibles and len(visibles) == 5
+    assert (RAIZ / "paginas" / "temporadas.py").is_file()
+
+
+@pytest.mark.parametrize("temporada", TEMPORADAS_PRED)
+def test_temporadas_se_renderiza_cada_temporada_con_su_resumen_y_su_lista(temporada):
+    at = _abrir_temporadas(temporada)
+    html = _sin_css(at)
+    t = rt.de_temporada(PRED, temporada)
+    r = rt.resumen(t)
+    assert _grupo(at, "temp_sel").value == temporada and f"Temporada {temporada_corta(temporada)}" in html
+    for m in ("logistica", "mercado"):
+        assert f"<dd>{r[m]['accuracy'] * 100:.2f}%</dd>" in html and f"<dd>{r[m]['log_loss']:.4f}</dd>" in html, m
+        assert f"<dd>{r[m]['aciertos']:,} de {r[m]['partidos']:,}</dd>" in html, m
+    tarjetas = _tarjetas(at)
+    esperado = [("ok" if a else "fallo", fecha_corta(f)) for a, f in zip(rt.acierto(t).iloc[:20], t["fecha"].iloc[:20])]
+    assert tarjetas == esperado  # los 20 primeros partidos de ESA temporada, en orden de fecha, con su acierto o fallo
+    assert _mostrando(at) == (min(20, len(t)), len(t))
+    primero = t.iloc[0]
+    assert f"{rt.porcentajes(primero)['H']} % L" in html and f">{fichas_siglas(primero['local'])}<" in html
+
+
+def fichas_siglas(llave):
+    from src.equipos import cargar_equipos
+    return cargar_equipos().loc[llave, "siglas"]
+
+
+def test_temporadas_solo_ofrece_de_la_2018_19_a_la_2025_26_y_no_la_en_curso():
+    at = _abrir_temporadas()
+    g = _grupo(at, "temp_sel")
+    assert g.options == [f"{a}/{str(a + 1)[-2:]}" for a in range(2018, 2026)]
+    assert "Temporada 2026/27" not in _sin_css(at) and "2026/2027" not in " ".join(PRED["temporada"].unique())
+    assert g.value == "2025/2026"  # arranca en la más reciente
+    html = _sin_css(at)
+    assert "La 2026/27 está en curso y no entra" in html and "probablemente es ruido" in html and c.AVISO_EDUCATIVO in html
+
+
+@pytest.mark.parametrize("filtro,clase", [("Aciertos", "ok"), ("Fallos", "fallo")])
+def test_temporadas_el_filtro_deja_solo_aciertos_o_solo_fallos(filtro, clase):
+    at = _abrir_temporadas("2023/2024", filtro)
+    t = rt.filtrar(rt.de_temporada(PRED, "2023/2024"), filtro)
+    tarjetas = _tarjetas(at)
+    assert tarjetas and {c_ for c_, _ in tarjetas} == {clase}
+    assert _mostrando(at) == (20, len(t)) and [f for _, f in tarjetas] == [fecha_corta(f) for f in t["fecha"].iloc[:20]]
+    todos = rt.de_temporada(PRED, "2023/2024")
+    assert len(rt.filtrar(todos, "Aciertos")) + len(rt.filtrar(todos, "Fallos")) == len(todos) == 340
+    assert _abrir_temporadas("2023/2024", "Todos").get("button_group") and _mostrando(_abrir_temporadas("2023/2024")) == (20, 340)
+
+
+def test_temporadas_ver_mas_suma_20_y_termina_cuando_ya_se_ve_todo():
+    at = _abrir_temporadas("2019/2020")  # 275 partidos
+    assert _mostrando(at) == (20, 275) and _ver_mas(at).label == "Ver más (20)"
+    _ver_mas(at).click().run()
+    assert _mostrando(at) == (40, 275) and len(_tarjetas(at)) == 40
+    _todo_visible(at)
+    assert _mostrando(at) == (275, 275) and len(_tarjetas(at)) == 275 and _ver_mas(at) is None
+    # el último «Ver más» ofrecía los 15 que faltaban
+    t = _abrir_temporadas("2019/2020")
+    for _ in range(12):
+        _ver_mas(t).click().run()
+    assert _mostrando(t) == (260, 275) and _ver_mas(t).label == "Ver más (15)"
+
+
+def test_temporadas_el_contador_vuelve_a_20_al_cambiar_de_temporada_o_de_filtro():
+    at = _abrir_temporadas("2024/2025")
+    for _ in range(3):
+        _ver_mas(at).click().run()
+    assert _mostrando(at)[0] == 80
+    _grupo(at, "temp_sel").set_value("2021/2022").run()  # otra temporada
+    assert _mostrando(at) == (20, 342) and len(_tarjetas(at)) == 20
+    _ver_mas(at).click().run()
+    assert _mostrando(at)[0] == 40
+    _grupo(at, "temp_filtro").set_value("Fallos").run()  # otro filtro
+    assert _mostrando(at)[0] == 20 and {c_ for c_, _ in _tarjetas(at)} == {"fallo"}
+    _ver_mas(at).click().run()
+    _grupo(at, "temp_sel").set_value("2018/2019").run()  # cambiar de temporada conserva el filtro y reinicia el contador
+    assert _grupo(at, "temp_filtro").value == "Fallos" and _mostrando(at)[0] == 20
+    assert _mostrando(at)[1] == len(rt.filtrar(rt.de_temporada(PRED, "2018/2019"), "Fallos"))
+
+
+def test_temporadas_con_la_temporada_completa_visible_el_html_pesa_menos_de_500_kb():
+    at = _todo_visible(_abrir_temporadas("2025/2026"))
+    t = rt.de_temporada(PRED, "2025/2026")
+    assert len(_tarjetas(at)) == len(t) == 336
+    assert [f for _, f in _tarjetas(at)] == [fecha_corta(f) for f in t["fecha"]]  # todos, en orden de fecha
+    peso = sum(len(m.value) for m in at.markdown) / 1024
+    assert peso < 500, f"{peso:.0f} KB"  # regla de Extras
+    for m in at.markdown:
+        if not m.value.startswith("<style>/*"):
+            assert "\n" not in m.value and m.value == m.value.strip(), m.value[:80]
+
+
+def test_temporadas_sin_el_csv_avisa_y_no_falla(tmp_path, monkeypatch):
+    from interfaz import recursos as _r
+    monkeypatch.setattr(_r, "RUTA_PREDICCIONES", tmp_path / "no_esta.csv")
+    at = AppTest.from_file(str(RAIZ / "app.py"), default_timeout=120).run()
+    at = at.switch_page("paginas/temporadas.py").run()
+    assert not at.exception, [e.value for e in at.exception]
+    html = _sin_css(at)
+    assert "no están disponibles en este momento" in html and "<article" not in html and not at.button

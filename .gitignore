@@ -217,7 +217,10 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-datos/procesados/
+# datos/procesados/: solo se versionan los CSV que la app necesita en Cloud (los generan scripts offline)
+datos/procesados/*
+!datos/procesados/calibracion.csv
+!datos/procesados/predicciones_oof.csv
 
 # escudos en alta resolución (las versiones ligeras están en assets/escudos/)
 assets/escudos_originales/

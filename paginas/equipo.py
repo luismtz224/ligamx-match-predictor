@@ -64,9 +64,23 @@ def pagina_equipo(equipo):
        'gráfica, el récord, los últimos 10 y los rivales. El Elo actual, la racha y los clásicos son '
        'siempre históricos (desde 2012).</p>')
 
+    otros = [e for e in todos if e != equipo]
+    rival = st.selectbox("Comparar con…", otros, index=None, key=f"comp-{slug}", format_func=r.nombre,
+                         placeholder="Elige un equipo")
     serie = h.serie_elo(pf)
-    md(c.grafica_elo(equipo, nombre, grafica.geometria(serie), h.extremos(serie),
-                     etiqueta_final="Hoy" if (elegida is None and activo) else "Final"))
+    etiqueta = "Hoy" if (elegida is None and activo) else "Final"
+    geo, comp = grafica.geometria(serie), None
+    if rival is not None:
+        serie2 = h.serie_elo(h.filtrar_temporada(h.partidos_equipo(feat, rival, elo), elegida))
+        if serie2.empty:
+            aviso(f"{r.nombre(rival)} no jugó en esta temporada: no hay línea que comparar.")
+        elif not serie.empty:
+            geo, geo2 = grafica.geometria_comparada(serie, serie2)
+            comp = dict(equipo=rival, nombre=r.nombre(rival), geo=geo2, ext=h.extremos(serie2),
+                        etiqueta_final="Hoy" if (elegida is None and rival in activos) else "Final",
+                        color=r.color_comparado(equipo, rival), escudo=r.escudo_html(rival, 24))
+    md(c.grafica_elo(equipo, nombre, geo, h.extremos(serie),
+                     etiqueta_final=etiqueta, comp=comp, escudo=r.escudo_html(equipo, 24)))
 
     # --- récord ---
     md(c.encabezado("Récord"))
