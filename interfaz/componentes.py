@@ -314,24 +314,60 @@ def resumen_elo(nombre, ext):
             f"máximo {ex:,.0f} ({fecha_corta(fx)}); mínimo {en:,.0f} ({fecha_corta(fn)})")
 
 
-def grafica_elo(equipo, nombre, geo, ext, etiqueta_final="Hoy"):
+def _items_resumen(ext, etiqueta_final):
+    items = (("Máximo", ext["maximo"]), ("Mínimo", ext["minimo"]), ("Inicio", ext["inicio"]),
+             (etiqueta_final, ext["final"]))
+    return "".join(f'<div><dt>{escape(t)}</dt><dd>{e:,.0f}<small>{escape(fecha_corta(f))}</small></dd></div>'
+                   for t, (f, e) in items)
+
+
+def _marcas(geo, clase):
+    return "".join(f'<circle class="{clase}" cx="{p["x"]}" cy="{p["y"]}" r="5"></circle>'
+                   for p in geo["puntos"])
+
+
+def grafica_elo(equipo, nombre, geo, ext, etiqueta_final="Hoy", comp=None, escudo=""):
     """Gráfica del Elo a partir de `src.grafica.geometria` y `historial.extremos`.
-    Sin geometría (sin partidos en el filtro): aviso. El resumen visible repite el aria-label."""
+    Sin geometría (sin partidos en el filtro): aviso. El resumen visible repite el aria-label.
+
+    `comp` (dict con equipo, nombre, geo, ext, etiqueta_final, color y escudo) agrega la línea de otro
+    equipo en la misma escala (`grafica.geometria_comparada`); `escudo` es el del primero, para la
+    leyenda. Sin `comp` el HTML es el de siempre."""
     if geo is None:
         return aviso("Sin partidos en esta temporada.", suave=True)
-    marcas = "".join(f'<circle class="pt" cx="{p["x"]}" cy="{p["y"]}" r="5"></circle>'
-                     for p in geo["puntos"])
+    if comp is not None:
+        return _grafica_comparada(equipo, nombre, geo, ext, etiqueta_final, comp, escudo)
     svg = (f'<svg class="lm-spark" style="--team:{color_equipo(equipo)}" viewBox="0 0 600 220" '
            f'role="img" aria-label="{escape(resumen_elo(nombre, ext))}">'
            f'<path class="gr" d="{geo["rejilla"]}"></path><path class="ar" d="{geo["area"]}"></path>'
-           f'<path class="ln" pathLength="1" d="{geo["linea"]}"></path>{marcas}</svg>')
-    items = (("Máximo", ext["maximo"]), ("Mínimo", ext["minimo"]), ("Inicio", ext["inicio"]),
-             (etiqueta_final, ext["final"]))
-    resumen = "".join(f'<div><dt>{escape(t)}</dt><dd>{e:,.0f}<small>{escape(fecha_corta(f))}</small></dd></div>'
-                      for t, (f, e) in items)
+           f'<path class="ln" pathLength="1" d="{geo["linea"]}"></path>{_marcas(geo, "pt")}</svg>')
     nota = ('<p class="lm-muted" style="margin:8px 0 0;font-size:14px">El trazo se corta donde el '
             'equipo no jugó (más de un año).</p>' if geo["cortes"] else "")
-    return f'<div class="lm-chart">{svg}<dl class="lm-chartsum">{resumen}</dl>{nota}</div>'
+    return (f'<div class="lm-chart">{svg}<dl class="lm-chartsum">{_items_resumen(ext, etiqueta_final)}</dl>'
+            f'{nota}</div>')
+
+
+def _grafica_comparada(equipo, nombre, geo, ext, etiqueta_final, comp, escudo):
+    """Dos líneas del Elo en la misma escala: la del primer equipo (continua, con área) y la del
+    segundo (punteada, sin animación, para no depender solo del color)."""
+    g2 = comp["geo"]
+    aria = f"{resumen_elo(nombre, ext)}. {resumen_elo(comp['nombre'], comp['ext'])}"
+    estilo = f'--team:{color_equipo(equipo)};--team2:{comp["color"]}'  # en el contenedor: lo usan también la leyenda y el resumen
+    svg = (f'<svg class="lm-spark" viewBox="0 0 600 220" role="img" aria-label="{escape(aria)}">'
+           f'<path class="gr" d="{geo["rejilla"]}"></path><path class="ar" d="{geo["area"]}"></path>'
+           f'<path class="ln" pathLength="1" d="{geo["linea"]}"></path>'
+           f'<path class="ln2" d="{g2["linea"]}"></path>{_marcas(geo, "pt")}{_marcas(g2, "pt b")}</svg>')
+    leyenda = "".join(
+        f'<li><span class="lm-key{clase}"></span>{esc}<span>{escape(n)}</span></li>'
+        for clase, esc, n in (("", escudo, nombre), (" b", comp["escudo"], comp["nombre"])))
+    bloques = "".join(
+        f'<div class="lm-chartcmp"><div class="lm-chartcmp__t"><span class="lm-key{clase}"></span>'
+        f'{escape(n)}</div><dl class="lm-chartsum">{_items_resumen(e, et)}</dl></div>'
+        for clase, n, e, et in (("", nombre, ext, etiqueta_final),
+                                (" b", comp["nombre"], comp["ext"], comp["etiqueta_final"])))
+    nota = ('<p class="lm-muted" style="margin:8px 0 0;font-size:14px">El trazo de un equipo se corta '
+            'donde no jugó (más de un año).</p>' if geo["cortes"] or g2["cortes"] else "")
+    return (f'<div class="lm-chart" style="{estilo}"><ul class="lm-claves">{leyenda}</ul>{svg}{bloques}{nota}</div>')
 
 
 def _num(x):

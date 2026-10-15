@@ -114,6 +114,19 @@ def colores_partido(local, visita):
     return f"var(--team-{sl})", f"var(--{clave})", v[f"team-{sl}"], v[clave]
 
 
+def color_comparado(equipo, otro):
+    """Color CSS de la línea de `otro` al compararlo con `equipo` (que usa `--team-<slug>`).
+
+    El primero que se distinga del de `equipo` (delta E >= 30): su color, su -2, `--ink` y, si
+    aun así se confunden (dos equipos blancos), el acento de la app.
+    """
+    v = colores_css()
+    sl, so = componentes.SLUG[equipo], componentes.SLUG[otro]
+    opciones = [(f"team-{so}", v.get(f"team-{so}")), (f"team-{so}-2", v.get(f"team-{so}-2")),
+                ("ink", v["ink"]), ("accent", v["accent"])]
+    return f"var(--{color_distinto(v[f'team-{sl}'], v[f'team-{sl}'], opciones)})"
+
+
 @st.cache_resource
 def _equipos(contenido):
     return cargar_equipos(RUTA_EQUIPOS)

@@ -163,6 +163,17 @@ La página de un equipo (`paginas/equipo.py`) se viste con sus colores, sin Java
 - **Orden y «Ver más»:** por fecha, de la más vieja a la más nueva. Se muestran 20 y «Ver más (20)» agrega otros 20 hasta mostrar todo (el último ofrece los que faltan); debajo, «Mostrando N de M partidos, en orden de fecha». El contador vuelve a 20 al cambiar de temporada **o de filtro**; cambiar de temporada conserva el filtro.
 - **Frágil:** Streamlit pisa el `font-size` de los `<p>` dentro de markdown: la tarjeta usa solo `<div>`/`<span>`. `.lm-sr` es el texto visualmente oculto (`clip: rect(0 0 0 0)`).
 
+## Comparar el Elo con otro equipo (página de un equipo)
+
+- Selector «Comparar con…» (`st.selectbox`, `index=None`, `key="comp-<slug>"`: se reinicia al cambiar de equipo) entre las pastillas de temporada y la gráfica. Los otros 24 equipos por nombre mostrado.
+- Misma escala: `src.grafica.geometria_comparada` calcula un rango de Elo y un eje de tiempo comunes (`geometria` acepta `rango` y `dominio`; sin ellos la salida no cambia). Sin comparación, el HTML de `grafica_elo` es byte por byte el de antes (prueba con hashes).
+- La segunda línea es **punteada** (`.ln2`, `7 5`) y sin animación: no depende solo del color. Sus marcadores son `.pt.b`. El área sombreada es solo del primer equipo.
+- Color del segundo: `recursos.color_comparado`: su `--team-<slug>`, su `-2`, `--ink` y, como último recurso, `--accent`, con ΔE ≥ 30 contra el color del primero (`color_distinto`). De los 600 pares: 508 usan su color, 80 el `-2`, 10 `--ink` y 2 `--accent` (Lobos BUAP contra Mazatlán, los dos blancos sin `-2`: sin el cuarto recurso `--ink` se confundía con ellos).
+- `--team` y `--team2` van en el `style` del `.lm-chart` (no en el `<svg>`) para que la leyenda y los títulos del resumen los hereden.
+- Leyenda `.lm-claves` (no `.lm-legend`, que ya es la del Predictor): muestra de línea (`.lm-key`, continua o punteada), escudo de 24 px y nombre. Resumen: un bloque `.lm-chartcmp` por equipo (máximo, mínimo, inicio, hoy/final). El `aria-label` del SVG trae el resumen de los dos.
+- Si el rival no jugó en la temporada elegida: aviso y la gráfica queda con un solo equipo. Los cortes por huecos de más de 365 días aplican a cada línea; la nota dice «de un equipo».
+- Peso: +50 KB con una comparación (Toluca 259 → 309 KB; Atl. San Luis 276 → 314 KB).
+
 ## Streamlit: qué es frágil
 
 - Selectores `[data-testid]` y `[data-baseweb]` del bloque «Adaptación a Streamlit» del CSS cambian entre versiones. Probar al actualizar.

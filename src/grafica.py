@@ -23,8 +23,11 @@ def _fmt(x):
     return f"{x:.1f}"
 
 
-def geometria(serie):
+def geometria(serie, rango=None, dominio=None):
     """Paths y marcadores de la serie de `historial.serie_elo`. None si está vacía.
+
+    `rango` (lo, hi) y `dominio` (fecha inicial, fecha final) fuerzan una escala común para
+    comparar dos series (ver `geometria_comparada`); sin ellos se calculan con la propia serie.
 
     dict con: linea, area, rejilla (atributos d), puntos (lista de dict x, y, tipo con
     'min', 'max' y 'final', sin repetir posición en el lienzo), cortes (bool) y rango (lo, hi).
@@ -32,8 +35,8 @@ def geometria(serie):
     """
     if serie.empty:
         return None
-    lo, hi = escala_y(serie["elo"])
-    t0, t1 = serie["fecha"].iloc[0], serie["fecha"].iloc[-1]
+    lo, hi = rango or escala_y(serie["elo"])
+    t0, t1 = dominio or (serie["fecha"].iloc[0], serie["fecha"].iloc[-1])
     dias = (t1 - t0).days
     ancho_util, alto_util = ANCHO - IZQ - DER, ALTO - ARRIBA - ABAJO
     base = ALTO - ABAJO
@@ -73,6 +76,18 @@ def geometria(serie):
             puntos.append(dict(x=pos[0], y=pos[1], tipo=tipo))
     return dict(linea=linea, area=area, rejilla=rejilla, puntos=puntos,
                 cortes=len(tramos) > 1, rango=(lo, hi))
+
+
+def geometria_comparada(serie_a, serie_b):
+    """(geo_a, geo_b) de dos series en la misma escala: mismo rango de Elo (cubre las dos) y
+    mismo eje de tiempo (de la primera fecha de cualquiera a la última de cualquiera).
+    Una serie vacía da None; la otra se dibuja con su propia escala (no hay con qué comparar)."""
+    if serie_a.empty or serie_b.empty:
+        return geometria(serie_a), geometria(serie_b)
+    rango = escala_y(list(serie_a["elo"]) + list(serie_b["elo"]))
+    fechas = list(serie_a["fecha"]) + list(serie_b["fecha"])
+    dominio = (min(fechas), max(fechas))
+    return geometria(serie_a, rango, dominio), geometria(serie_b, rango, dominio)
 
 
 # ===== Gráfica de calibración (SVG de 360 × 340, cuadro de 300 × 300 con el mismo rango en los dos ejes) =====
