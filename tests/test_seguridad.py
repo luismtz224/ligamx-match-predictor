@@ -254,7 +254,8 @@ def test_gitignore_cubre_lo_sensible():
 def test_los_detectores_de_secretos_y_menciones_funcionan():
     """Los detectores de arriba no sirven si no detectan: se prueban con ejemplos buenos y malos."""
     for malo in ("AKIA" + "ABCDEFGHIJKLMNOP", "ghp_" + "a" * 36, "sk-" + "b" * 30,
-                 "-----BEGIN RSA PRIVATE KEY-----", 'API_KEY = "abcd1234efgh"', "password: 'hunter2hunter2'"):
+                 "-----BEGIN " + "RSA PRIVATE KEY-----", 'API_' + 'KEY = "' + "abcd1234efgh" + '"',
+                 "pass" + "word: '" + "hunter2" * 2 + "'"):  # por partes: ningún archivo lleva un patrón completo
         assert SECRETOS.search(malo), malo
     for bueno in ("asttokens==3.0.2", "--ink-muted: #a9a9c4", "token = 3", "password = ''", "AKIA corto"):
         assert not SECRETOS.search(bueno), bueno
