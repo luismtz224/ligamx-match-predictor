@@ -5,7 +5,7 @@ from src.explicacion import contribuciones
 from src.formato import fecha_corta, redondear_100
 from src.historial import h2h, partidos_equipo, ultimos
 from src.imagen import generar_png
-from src.prediccion import features_partido, mercado, predecir
+from src.prediccion import MOMIO_MAX, MOMIO_MIN, features_partido, mercado, predecir
 
 
 def md(html):
@@ -111,14 +111,18 @@ md(c.encabezado("Modelo contra mercado"))
 with st.expander("Comparar con los momios (opcional)"):
     st.caption("Los valores iniciales son de ejemplo; escribe los momios del partido.")
     m1, m2, m3 = st.columns(3)
-    mh = m1.number_input("Local", min_value=1.01, value=2.00)
-    mdd = m2.number_input("Empate", min_value=1.01, value=3.30)
-    ma = m3.number_input("Visitante", min_value=1.01, value=3.50)
-    mer, margen = mercado(mh, mdd, ma)
-    md(c.modelo_vs_mercado([(f"Gana {nl}", probs[0], mer[0]), ("Empate", probs[1], mer[1]),
-                            (f"Gana {nv}", probs[2], mer[2])]))
-    md(f'<p class="lm-muted" style="font-size:14px;margin-top:8px">Margen de la casa: '
-       f'{100 * margen:.1f}%. El mercado se calcula quitando ese margen (1/momio, normalizado).</p>')
+    mh = m1.number_input("Local", min_value=MOMIO_MIN, max_value=MOMIO_MAX, value=2.00)
+    mdd = m2.number_input("Empate", min_value=MOMIO_MIN, max_value=MOMIO_MAX, value=3.30)
+    ma = m3.number_input("Visitante", min_value=MOMIO_MIN, max_value=MOMIO_MAX, value=3.50)
+    try:
+        mer, margen = mercado(mh, mdd, ma)
+    except ValueError as e:  # el campo ya acota; esto protege si llega un valor que no debería
+        st.warning(str(e))
+    else:
+        md(c.modelo_vs_mercado([(f"Gana {nl}", probs[0], mer[0]), ("Empate", probs[1], mer[1]),
+                                (f"Gana {nv}", probs[2], mer[2])]))
+        md(f'<p class="lm-muted" style="font-size:14px;margin-top:8px">Margen de la casa: '
+           f'{100 * margen:.1f}%. El mercado se calcula quitando ese margen (1/momio, normalizado).</p>')
 
 st.download_button("Descargar imagen", data=_png(local, visita, r.huella_png(local, visita)),
                    file_name=f"prediccion-{c.SLUG[local]}-vs-{c.SLUG[visita]}.png",
